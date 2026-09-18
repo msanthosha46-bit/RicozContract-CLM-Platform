@@ -1,17 +1,18 @@
 import React, { useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
-import { LogOut, User as UserIcon } from 'lucide-react';
+import { LogOut, Menu, User as UserIcon } from 'lucide-react';
 
-const Topbar = () => {
+const Topbar = ({ onMenuClick }) => {
   const { user, logout } = useContext(AuthContext);
 
   return (
-    <header className="h-20 border-b border-slate-200 bg-white/95 px-5 backdrop-blur-sm md:px-8">
+    <header className="sticky top-0 z-20 h-16 border-b border-slate-200 bg-white/95 px-4 backdrop-blur-sm sm:h-20 sm:px-5 md:px-8">
       <div className="flex h-full items-center justify-between">
-        <div className="flex items-center gap-3 text-sm font-bold">
+        <div className="flex min-w-0 items-center gap-2 text-sm font-bold">
+          <button aria-label="Open navigation" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 md:hidden" onClick={onMenuClick}><Menu className="h-5 w-5" /></button>
           <span className="rounded-full bg-[#fff0f0] px-3 py-2 text-[#d51d29]">Workspace</span>
-          <span className="text-slate-300">/</span>
-          <span className="text-[#0f1d3a]">Overview</span>
+          <span className="hidden text-slate-300 sm:inline">/</span>
+          <span className="hidden truncate text-[#0f1d3a] sm:inline">Overview</span>
         </div>
 
         <div className="flex items-center gap-4">
@@ -23,8 +24,8 @@ const Topbar = () => {
           </div>
 
           <button className="hidden h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm lg:flex" title="Notifications">•</button>
-          <button className="inline-flex items-center gap-2 rounded-xl bg-[#d51d29] px-4 py-3 text-sm font-bold text-white shadow-lg shadow-red-200 transition hover:bg-[#b91c26]" onClick={logout}>
-            <LogOut className="h-4 w-4" /> Logout
+          <button className="inline-flex items-center gap-2 rounded-xl bg-[#d51d29] px-3 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-200 transition hover:bg-[#b91c26] sm:px-4 sm:py-3" onClick={logout}>
+            <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Logout</span>
           </button>
         </div>
       </div>

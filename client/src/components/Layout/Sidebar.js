@@ -2,11 +2,11 @@ import React, { useContext } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, FileText, CheckSquare, Clock, Flag,
-  BarChart3, Users, Settings, ShieldCheck, FilePlus, User, Activity
+  BarChart3, Users, Settings, ShieldCheck, FilePlus, User, Activity, X
 } from 'lucide-react';
 import { AuthContext } from '../../context/AuthContext';
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen, onClose }) => {
   const { user } = useContext(AuthContext);
 
   const links = [
@@ -25,16 +25,23 @@ const Sidebar = () => {
   ];
 
   return (
-    <aside className="w-72 bg-[#f5f6f8] text-[#64748b] flex flex-col min-h-screen border-r border-[#e2e5ea]">
+    <>
+      <button
+        aria-label="Close navigation"
+        className={`fixed inset-0 z-30 bg-[#0f1d3a]/35 backdrop-blur-[2px] transition-opacity md:hidden ${isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+        onClick={onClose}
+      />
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-[min(19rem,88vw)] flex-col border-r border-[#e2e5ea] bg-[#f5f6f8] text-[#64748b] shadow-2xl transition-transform duration-200 md:static md:min-h-screen md:w-72 md:translate-x-0 md:shadow-none ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="flex h-20 items-center px-6 border-b border-[#e2e5ea]">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#d51d29] text-lg font-black text-white shadow-lg shadow-red-200">
             R
           </div>
           <div className="text-xl font-black tracking-[-0.05em] text-[#0f1d3a]">
-            Ricoz<span className="text-[#64748b]">Invoice</span>
+            Ricoz<span className="text-[#64748b]">Contract</span>
           </div>
         </div>
+        <button aria-label="Close navigation" className="ml-auto rounded-lg p-2 text-slate-500 hover:bg-white md:hidden" onClick={onClose}><X className="h-5 w-5" /></button>
       </div>
 
       <nav className="flex-1 px-4 py-6 space-y-1.5">
@@ -45,6 +52,7 @@ const Sidebar = () => {
             <NavLink
               key={link.path}
               to={link.path}
+              onClick={onClose}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all ${
                   isActive
@@ -67,7 +75,8 @@ const Sidebar = () => {
           <div className="mt-3 font-bold text-[#d51d29]">Explore plans ↗</div>
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 };
 

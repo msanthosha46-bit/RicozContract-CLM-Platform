@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import Sidebar from './components/Layout/Sidebar';
@@ -24,14 +24,15 @@ import Profile from './pages/Profile';
 
 const ProtectedLayout = ({ children }) => {
   const { user } = useContext(AuthContext);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   if (!user) return <Navigate to="/login" replace />;
 
   return (
     <div className="ricoz-shell flex min-h-screen bg-[#f3f5f8] font-sans text-slate-900">
-      <Sidebar />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
-        <Topbar />
-        <main className="flex-1 p-5 md:p-8">{children}</main>
+        <Topbar onMenuClick={() => setSidebarOpen(true)} />
+        <main className="flex-1 p-4 sm:p-5 md:p-8">{children}</main>
       </div>
     </div>
   );
