@@ -4,6 +4,10 @@
   "outputDirectory": "client/build",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://ricozcontract-clm-platform-2.onrender.com/api/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
