@@ -86,7 +86,7 @@ const LandingPage = () => {
           </div>
 
           <h1 className="mx-auto mt-6 max-w-6xl text-5xl font-black leading-[1.01] tracking-[-0.06em] text-[#0f172a] md:text-[76px]">
-            RicozInvoice keeps
+            RicozContract keeps
             <span className="mt-2 block">your business money in</span>
             <span className="mt-2 block">focus.</span>
           </h1>
@@ -121,7 +121,7 @@ const LandingPage = () => {
               </div>
               <div className="flex items-center gap-2 text-sm font-medium text-[#64748b]">
                 <span className="h-2 w-2 rounded-full bg-[#0f172a]" />
-                RicozInvoice / Dashboard
+                RicozContract / Dashboard
               </div>
             </div>
 
@@ -134,7 +134,7 @@ const LandingPage = () => {
                     </div>
                     <div>
                       <div className="text-xs uppercase tracking-[0.2em] text-slate-300">Workspace</div>
-                      <div className="text-xl font-bold">RicozInvoice</div>
+                      <div className="text-xl font-bold">RicozContract</div>
                     </div>
                   </div>
                   <div className="mt-6 rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">

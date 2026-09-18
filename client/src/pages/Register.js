@@ -38,7 +38,7 @@ const Register = () => {
 								<div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#d51d29] text-lg font-black text-white shadow-lg shadow-red-200">
 									RZ
 								</div>
-								<div className="text-2xl font-black tracking-[-0.05em] text-white">RicozInvoice</div>
+								<div className="text-2xl font-black tracking-[-0.05em] text-white">RicozContract</div>
 							</div>
 							<div className="mt-10 space-y-4">
 								<p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Start now</p>
