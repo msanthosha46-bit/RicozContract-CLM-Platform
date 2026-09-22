@@ -10,7 +10,12 @@ const GOOGLE_ERROR_MESSAGES = {
 const GoogleSignInButton = ({ onCredential, onError, disabled = false }) => {
   const buttonRef = useRef(null);
   const [ready, setReady] = useState(false);
-  const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+  // REACT_APP_GOOGLE_CLIENT_ID takes precedence; the public project client ID
+  // below is a fallback so a deployment without the build-time env var still
+  // gets a working button (a client ID is public, not a secret).
+  const clientId =
+    process.env.REACT_APP_GOOGLE_CLIENT_ID ||
+    '719800879829-ali1g7m187jrfj78cqtg7t362ssn16l5.apps.googleusercontent.com';
   const isDisabled = disabled || !clientId;
 
   // Keep the latest callbacks without re-running the effect (which would

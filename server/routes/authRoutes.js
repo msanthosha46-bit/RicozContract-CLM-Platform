@@ -98,7 +98,7 @@ router.post('/login', async (req, res, next) => {
 router.post('/google', async (req, res, next) => {
   const { credential } = req.body || {};
 
-  if (!process.env.GOOGLE_CLIENT_ID) {
+  if (!googleAuth.getGoogleClientId()) {
     return res.status(503).json({ message: 'Google Sign-In is not configured' });
   }
   if (!credential || typeof credential !== 'string' || !credential.trim()) {
