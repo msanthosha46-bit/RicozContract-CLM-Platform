@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import API from '../services/api';
-import { Flag, ArrowUpRight } from 'lucide-react';
+import { Flag } from 'lucide-react';
+import { AuthContext } from '../context/AuthContext';
+import Modal from '../components/Layout/Common/Modal';
+import Toast from '../components/Layout/Common/Toast';
 
 const statusStyles = {
   Pending: 'bg-amber-100 text-amber-700',
@@ -9,8 +12,17 @@ const statusStyles = {
   Overdue: 'bg-red-100 text-red-700'
 };
 
+const emptyForm = { title: '', description: '', contract: '', assignedTo: '', dueDate: '' };
+
 const Milestones = () => {
+  const { user } = useContext(AuthContext);
+  const canCreate = ['Admin', 'Manager'].includes(user?.role);
   const [milestones, setMilestones] = useState([]);
+  const [contracts, setContracts] = useState([]);
+  const [people, setPeople] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -30,6 +42,33 @@ const Milestones = () => {
     fetchMilestones();
   }, []);
 
+  const openCreate = async () => {
+    try {
+      const [contractRes, userRes] = await Promise.all([
+        API.get('/contracts'),
+        API.get('/users/directory')
+      ]);
+      setContracts(contractRes.data);
+      setPeople(userRes.data);
+      setForm(emptyForm);
+      setModalOpen(true);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to load create form');
+    }
+  };
+
+  const createMilestone = async (event) => {
+    event.preventDefault();
+    try {
+      await API.post('/milestones', form);
+      setModalOpen(false);
+      setToast({ type: 'success', message: 'Milestone created' });
+      fetchMilestones();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to create milestone');
+    }
+  };
+
   const updateStatus = async (id, status) => {
     try {
       await API.put(`/milestones/${id}`, { status });
@@ -43,7 +82,8 @@ const Milestones = () => {
 
   return (
     <div className="space-y-8">
-      <div>
+      {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
+      <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8]"><Flag className="h-6 w-6" /></div>
           <div>
@@ -52,6 +92,7 @@ const Milestones = () => {
             <p className="mt-2 text-slate-500">Give each agreement a visible path from kickoff to completion.</p>
           </div>
         </div>
+        {canCreate && <button onClick={openCreate} className="rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white">New milestone</button>}
       </div>
 
       {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -89,7 +130,7 @@ const Milestones = () => {
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
                       {milestone.status !== 'In Progress' && milestone.status !== 'Completed' && (
-                        <button onClick={() => updateStatus(milestone._id, 'In Progress')} className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100">Start <ArrowUpRight className="h-3 w-3" /></button>
+                        <button onClick={() => updateStatus(milestone._id, 'In Progress')} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100">Start</button>
                       )}
                       {milestone.status !== 'Completed' && (
                         <button onClick={() => updateStatus(milestone._id, 'Completed')} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">Complete</button>
@@ -102,6 +143,32 @@ const Milestones = () => {
           </table>
         )}
       </div>
+
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Create milestone"
+        footer={
+          <>
+            <button onClick={() => setModalOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
+            <button form="milestone-form" className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white">Save</button>
+          </>
+        }
+      >
+        <form id="milestone-form" onSubmit={createMilestone} className="space-y-3">
+          <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
+          <select required value={form.contract} onChange={(e) => setForm({ ...form, contract: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm">
+            <option value="">Select contract</option>
+            {contracts.map((contract) => <option key={contract._id} value={contract._id}>{contract.contractNumber} · {contract.title}</option>)}
+          </select>
+          <select required value={form.assignedTo} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm">
+            <option value="">Assign to</option>
+            {people.map((person) => <option key={person._id} value={person._id}>{person.name}</option>)}
+          </select>
+          <input required type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
+          <textarea placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
+        </form>
+      </Modal>
     </div>
   );
 };

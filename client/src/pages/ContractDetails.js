@@ -1,18 +1,25 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import API from '../services/api';
 import StatusBadge from '../components/Layout/Common/StatusBadge';
 import { ArrowLeft, Pencil, FileText, Upload, Download, BadgeCheck } from 'lucide-react';
+import { AuthContext } from '../context/AuthContext';
+import Modal from '../components/Layout/Common/Modal';
+import Toast from '../components/Layout/Common/Toast';
 
 const ContractDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   const [contract, setContract] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [file, setFile] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const isAdmin = user?.role === 'Admin';
 
   const fetchContract = async () => {
     try {
@@ -48,6 +55,16 @@ const ContractDetails = () => {
       setError(err.response?.data?.message || 'Upload failed');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    try {
+      await API.patch(`/contracts/${id}/archive`);
+      setToast({ type: 'success', message: 'Contract archived' });
+      navigate('/contracts');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to archive contract');
     }
   };
 

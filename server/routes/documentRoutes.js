@@ -2,12 +2,29 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const upload = require('../middleware/upload');
+const Contract = require('../models/Contract');
 const ContractDocument = require('../models/ContractDocument');
 const { protect } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
+const { canAccessContract } = require('../utils/access');
 
-router.post('/upload/:contractId', protect, upload.single('document'), async (req, res) => {
+const loadAccessibleContract = async (req, res) => {
+  const contract = await Contract.findById(req.params.contractId || req.body.contract);
+  if (!contract) {
+    res.status(404).json({ message: 'Contract not found' });
+    return null;
+  }
+  if (!canAccessContract(req.user, contract)) {
+    res.status(403).json({ message: 'You do not have access to this contract' });
+    return null;
+  }
+  return contract;
+};
+
+router.post('/upload/:contractId', protect, upload.single('document'), async (req, res, next) => {
   try {
+    const contract = await loadAccessibleContract(req, res);
+    if (!contract) return;
     if (!req.file) return res.status(400).json({ message: 'Please upload a file' });
 
     const existingDocsCount = await ContractDocument.countDocuments({ contract: req.params.contractId });
@@ -26,27 +43,33 @@ router.post('/upload/:contractId', protect, upload.single('document'), async (re
     await logActivity(req.user._id, 'Document Uploaded', req.params.contractId, `Uploaded version v${doc.version}: ${doc.originalname}`);
     res.status(201).json(doc);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 
-router.get('/contract/:contractId', protect, async (req, res) => {
+router.get('/contract/:contractId', protect, async (req, res, next) => {
   try {
+    const contract = await loadAccessibleContract(req, res);
+    if (!contract) return;
     const docs = await ContractDocument.find({ contract: req.params.contractId }).populate('uploadedBy', 'name');
     res.json(docs);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 
-router.get('/download/:id', protect, async (req, res) => {
+router.get('/download/:id', protect, async (req, res, next) => {
   try {
     const doc = await ContractDocument.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Document not found' });
+    const contract = await Contract.findById(doc.contract);
+    if (!canAccessContract(req.user, contract)) {
+      return res.status(403).json({ message: 'You do not have access to this document' });
+    }
     const fullPath = path.resolve(__dirname, '..', doc.filePath);
     res.download(fullPath, doc.originalname);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 

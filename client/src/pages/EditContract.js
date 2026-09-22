@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import API from '../services/api';
+import { AuthContext } from '../context/AuthContext';
 
 const EditContract = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
+  const canEditStatus = ['Admin', 'Manager'].includes(user?.role);
   const [formData, setFormData] = useState({
     title: '',
     type: 'Vendor',
@@ -49,7 +52,9 @@ const EditContract = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await API.put(`/contracts/${id}`, formData);
+      const payload = { ...formData };
+      if (!canEditStatus) delete payload.status;
+      await API.put(`/contracts/${id}`, payload);
       navigate(`/contracts/${id}`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update contract');
@@ -80,6 +85,8 @@ const EditContract = () => {
               <option value="NDA">NDA</option>
               <option value="SLA">SLA</option>
               <option value="Employment">Employment</option>
+              <option value="Partnership">Partnership</option>
+              <option value="Other">Other</option>
             </select>
           </div>
         </div>
@@ -117,6 +124,7 @@ const EditContract = () => {
           </div>
         </div>
 
+        {canEditStatus && (
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
           <select name="status" value={formData.status} onChange={handleChange} className="w-full border p-2 rounded text-sm">
@@ -128,6 +136,7 @@ const EditContract = () => {
             <option value="Closed">Closed</option>
           </select>
         </div>
+        )}
 
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1">Description / Summary</label>

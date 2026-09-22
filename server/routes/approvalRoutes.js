@@ -4,12 +4,15 @@ const Approval = require('../models/Approval');
 const Contract = require('../models/Contract');
 const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
+const { canAccessContract } = require('../utils/access');
 
-// Submit contract for approval
-router.post('/submit/:contractId', protect, async (req, res) => {
+router.post('/submit/:contractId', protect, async (req, res, next) => {
   try {
     const contract = await Contract.findById(req.params.contractId);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
+    if (!canAccessContract(req.user, contract)) {
+      return res.status(403).json({ message: 'You do not have access to this contract' });
+    }
 
     const pendingApproval = await Approval.findOne({ contract: contract._id, status: 'Pending' });
     if (pendingApproval) {
@@ -28,24 +31,24 @@ router.post('/submit/:contractId', protect, async (req, res) => {
     await logActivity(req.user._id, 'Submitted for Approval', contract._id, `Contract ${contract.contractNumber} submitted for approval`);
     res.status(201).json(approval);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 
 // Get pending approvals list
-router.get('/pending', protect, authorize('Admin', 'Manager'), async (req, res) => {
+router.get('/pending', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
   try {
     const pending = await Approval.find({ status: 'Pending' })
       .populate('contract')
       .populate('requestedBy', 'name email');
     res.json(pending);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 
 // Approve/Reject Contract
-router.put('/:id/action', protect, authorize('Admin', 'Manager'), async (req, res) => {
+router.put('/:id/action', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
   try {
     const { action, comments } = req.body; // action = 'Approved' | 'Rejected'
     if (!['Approved', 'Rejected'].includes(action)) {
@@ -73,7 +76,7 @@ router.put('/:id/action', protect, authorize('Admin', 'Manager'), async (req, re
     await logActivity(req.user._id, `Contract ${action}`, approval.contract, `Approval decision: ${action}. Comments: ${comments || 'None'}`);
     res.json(approval);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 

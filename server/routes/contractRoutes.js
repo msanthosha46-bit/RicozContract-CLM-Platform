@@ -4,90 +4,137 @@ const Contract = require('../models/Contract');
 const Approval = require('../models/Approval');
 const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
+const { canAccessContract, employeeContractScope } = require('../utils/access');
 
-// Get all contracts with search & filter
-router.get('/', protect, async (req, res) => {
-  try {
-    const { search, status, type, sort } = req.query;
-    let query = { isArchived: false };
+const nextContractNumber = async () => {
+  const year = new Date().getFullYear();
+  const prefix = `CNT-${year}-`;
+  const latest = await Contract.findOne({ contractNumber: new RegExp(`^${prefix}`) })
+    .sort({ contractNumber: -1 })
+    .select('contractNumber');
 
-    // Role filtering: Employee can only see assigned or created contracts
-    if (req.user.role === 'Employee') {
-      query.$or = [{ createdBy: req.user._id }, { assignedUser: req.user._id }];
-    }
+  let seq = 1;
+  if (latest?.contractNumber) {
+    const parsed = Number(latest.contractNumber.slice(prefix.length));
+    if (!Number.isNaN(parsed)) seq = parsed + 1;
+  }
 
-    if (search) {
-      query.$or = [
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const contractNumber = `${prefix}${String(seq + attempt).padStart(4, '0')}`;
+    const exists = await Contract.exists({ contractNumber });
+    if (!exists) return contractNumber;
+  }
+
+  return `${prefix}${Date.now().toString().slice(-8)}`;
+};
+
+const buildListQuery = (req) => {
+  const { search, status, type } = req.query;
+  const filters = [{ isArchived: false }];
+
+  if (req.user.role === 'Employee') {
+    filters.push(employeeContractScope(req.user._id));
+  }
+
+  if (search) {
+    filters.push({
+      $or: [
         { title: { $regex: search, $options: 'i' } },
         { contractNumber: { $regex: search, $options: 'i' } },
         { partyName: { $regex: search, $options: 'i' } }
-      ];
-    }
+      ]
+    });
+  }
 
-    if (status) query.status = status;
-    if (type) query.type = type;
+  if (status) filters.push({ status });
+  if (type) filters.push({ type });
 
+  return filters.length === 1 ? filters[0] : { $and: filters };
+};
+
+router.get('/', protect, async (req, res, next) => {
+  try {
+    const query = buildListQuery(req);
     let contracts = Contract.find(query).populate('createdBy', 'name email').populate('assignedUser', 'name email');
-    if (sort === 'oldest') contracts = contracts.sort({ createdAt: 1 });
+    if (req.query.sort === 'oldest') contracts = contracts.sort({ createdAt: 1 });
     else contracts = contracts.sort({ createdAt: -1 });
 
     const result = await contracts;
     res.json(result);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 
-// Create Contract
-router.post('/', protect, async (req, res) => {
+router.post('/', protect, async (req, res, next) => {
   try {
-    const contractCount = await Contract.countDocuments();
-    const contractNumber = `CNT-${new Date().getFullYear()}-${String(contractCount + 1).padStart(4, '0')}`;
+    const contractNumber = await nextContractNumber();
 
     const contract = await Contract.create({
-      ...req.body,
+      title: req.body.title,
+      type: req.body.type,
+      partyName: req.body.partyName,
+      description: req.body.description,
+      startDate: req.body.startDate,
+      endDate: req.body.endDate,
+      amount: req.body.amount,
+      currency: req.body.currency,
+      assignedUser: req.body.assignedUser,
       contractNumber,
-      createdBy: req.user._id
+      createdBy: req.user._id,
+      status: 'Draft'
     });
 
     await logActivity(req.user._id, 'Contract Created', contract._id, `Created contract ${contract.contractNumber}`);
     res.status(201).json(contract);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 
-// Get Single Contract
-router.get('/:id', protect, async (req, res) => {
+router.get('/:id', protect, async (req, res, next) => {
   try {
     const contract = await Contract.findById(req.params.id)
       .populate('createdBy', 'name email')
       .populate('assignedUser', 'name email');
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
+    if (!canAccessContract(req.user, contract)) {
+      return res.status(403).json({ message: 'You do not have access to this contract' });
+    }
     res.json(contract);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 
-// Update Contract
-router.put('/:id', protect, async (req, res) => {
+router.put('/:id', protect, async (req, res, next) => {
   try {
     const contract = await Contract.findById(req.params.id);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
+    if (!canAccessContract(req.user, contract)) {
+      return res.status(403).json({ message: 'You do not have access to this contract' });
+    }
 
-    Object.assign(contract, req.body);
+    const allowed = ['title', 'type', 'partyName', 'description', 'startDate', 'endDate', 'amount', 'currency', 'assignedUser'];
+    if (['Admin', 'Manager'].includes(req.user.role)) {
+      allowed.push('status');
+    }
+
+    allowed.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        contract[field] = req.body[field];
+      }
+    });
     await contract.save();
 
     await logActivity(req.user._id, 'Contract Updated', contract._id, `Updated details for ${contract.contractNumber}`);
     res.json(contract);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 
-// Archive Contract
-router.patch('/:id/archive', protect, authorize('Admin'), async (req, res) => {
+router.patch('/:id/archive', protect, authorize('Admin'), async (req, res, next) => {
   try {
     const contract = await Contract.findById(req.params.id);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
@@ -98,7 +145,7 @@ router.patch('/:id/archive', protect, authorize('Admin'), async (req, res) => {
     await logActivity(req.user._id, 'Contract Archived', contract._id, `Archived contract ${contract.contractNumber}`);
     res.json({ message: 'Contract archived successfully' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 

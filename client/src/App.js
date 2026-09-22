@@ -6,6 +6,8 @@ import Topbar from './components/Layout/Topbar';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import ContractsList from './pages/ContractsList';
@@ -55,6 +57,8 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/dashboard" element={<ProtectedLayout><Dashboard /></ProtectedLayout>} />
           <Route path="/contracts" element={<ProtectedLayout><ContractsList /></ProtectedLayout>} />
           <Route path="/contracts/create" element={<ProtectedLayout><CreateContract /></ProtectedLayout>} />

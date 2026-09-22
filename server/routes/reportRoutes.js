@@ -4,9 +4,9 @@ const Contract = require('../models/Contract');
 const Obligation = require('../models/Obligation');
 const Milestone = require('../models/Milestone');
 const Renewal = require('../models/Renewal');
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 
-router.get('/summary', protect, async (req, res) => {
+router.get('/summary', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
   try {
     const total = await Contract.countDocuments({ isArchived: false });
     const draft = await Contract.countDocuments({ status: 'Draft', isArchived: false });
@@ -46,7 +46,7 @@ router.get('/summary', protect, async (req, res) => {
       typeBreakdown
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 

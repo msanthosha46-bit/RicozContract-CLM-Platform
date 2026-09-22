@@ -1,9 +1,10 @@
 import React, { useContext, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 const Register = () => {
-	const { register } = useContext(AuthContext);
+	const { register, loginWithGoogle } = useContext(AuthContext);
 	const navigate = useNavigate();
 	const [form, setForm] = useState({ name: '', email: '', password: '', department: '' });
 	const [error, setError] = useState('');
@@ -23,6 +24,20 @@ const Register = () => {
 			navigate('/dashboard', { replace: true });
 		} catch (requestError) {
 			setError(requestError.response?.data?.message || 'Unable to create your account.');
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const handleGoogleCredential = async (credential) => {
+		setError('');
+		setLoading(true);
+		try {
+			await loginWithGoogle(credential);
+			navigate('/dashboard', { replace: true });
+		} catch (requestError) {
+			const response = requestError.response?.data;
+			setError(response?.detail || response?.message || 'Unable to continue with Google.');
 		} finally {
 			setLoading(false);
 		}
@@ -95,6 +110,9 @@ const Register = () => {
 								{loading ? 'Creating account...' : 'Create account'}
 							</button>
 						</form>
+
+						<div className="my-6 flex items-center gap-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-400"><span className="h-px flex-1 bg-slate-200" />or<span className="h-px flex-1 bg-slate-200" /></div>
+						<GoogleSignInButton onCredential={handleGoogleCredential} onError={(googleError) => setError(googleError.message || 'Google Sign-In could not be opened.')} disabled={loading} />
 
 						<p className="mt-6 text-center text-sm text-[#475569]">
 							Already registered? <Link to="/login" className="font-semibold text-[#d51d29] hover:text-[#b91c26]">Sign in</Link>

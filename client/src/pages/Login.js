@@ -1,9 +1,10 @@
 import React, { useContext, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 const Login = () => {
-	const { login } = useContext(AuthContext);
+	const { login, loginWithGoogle } = useContext(AuthContext);
 	const navigate = useNavigate();
 	const [form, setForm] = useState({ email: '', password: '' });
 	const [error, setError] = useState('');
@@ -23,6 +24,20 @@ const Login = () => {
 			navigate('/dashboard', { replace: true });
 		} catch (requestError) {
 			setError(requestError.response?.data?.message || 'Unable to sign in. Please try again.');
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const handleGoogleCredential = async (credential) => {
+		setError('');
+		setLoading(true);
+		try {
+			await loginWithGoogle(credential);
+			navigate('/dashboard', { replace: true });
+		} catch (requestError) {
+			const response = requestError.response?.data;
+			setError(response?.detail || response?.message || 'Unable to sign in with Google.');
 		} finally {
 			setLoading(false);
 		}
@@ -92,18 +107,24 @@ const Login = () => {
 								/>
 							</label>
 
-							<label className="block text-sm font-medium text-[#334155]">
-								Password
-								<input
-									name="password"
-									type="password"
-									autoComplete="current-password"
-									required
-									value={form.password}
-									onChange={handleChange}
-									className="mt-2 w-full rounded-xl border border-[#dfe7f1] bg-[#f8fafc] px-3 py-3 text-[#0f172a] outline-none transition focus:border-[#d51d29] focus:bg-white focus:ring-4 focus:ring-red-100"
-								/>
-							</label>
+							<div className="flex items-baseline justify-between">
+								<label htmlFor="login-password" className="text-sm font-medium text-[#334155]">
+									Password
+								</label>
+								<Link to="/forgot-password" className="text-sm font-semibold text-[#d51d29] hover:text-[#b91c26]">
+									Forgot Password?
+								</Link>
+							</div>
+							<input
+								id="login-password"
+								name="password"
+								type="password"
+								autoComplete="current-password"
+								required
+								value={form.password}
+								onChange={handleChange}
+								className="mt-2 w-full rounded-xl border border-[#dfe7f1] bg-[#f8fafc] px-3 py-3 text-[#0f172a] outline-none transition focus:border-[#d51d29] focus:bg-white focus:ring-4 focus:ring-red-100"
+							/>
 
 							<button
 								type="submit"
@@ -113,6 +134,9 @@ const Login = () => {
 								{loading ? 'Signing in...' : 'Sign in'}
 							</button>
 						</form>
+
+						<div className="my-6 flex items-center gap-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-400"><span className="h-px flex-1 bg-slate-200" />or<span className="h-px flex-1 bg-slate-200" /></div>
+						<GoogleSignInButton onCredential={handleGoogleCredential} onError={(googleError) => setError(googleError.message || 'Google Sign-In could not be opened.')} disabled={loading} />
 
 						<p className="mt-6 text-center text-sm text-[#475569]">
 							Need an account?{' '}

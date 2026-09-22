@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import API from '../services/api';
-import { CheckCircle2, Clock3, LoaderCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
+import { AuthContext } from '../context/AuthContext';
+import Modal from '../components/Layout/Common/Modal';
+import Toast from '../components/Layout/Common/Toast';
 
 const statusStyles = {
   Pending: 'bg-amber-100 text-amber-700',
@@ -9,8 +12,17 @@ const statusStyles = {
   Overdue: 'bg-red-100 text-red-700'
 };
 
+const emptyForm = { title: '', description: '', contract: '', assignedTo: '', dueDate: '' };
+
 const Obligations = () => {
+  const { user } = useContext(AuthContext);
+  const canCreate = ['Admin', 'Manager'].includes(user?.role);
   const [obligations, setObligations] = useState([]);
+  const [contracts, setContracts] = useState([]);
+  const [people, setPeople] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -30,6 +42,33 @@ const Obligations = () => {
     fetchObligations();
   }, []);
 
+  const openCreate = async () => {
+    try {
+      const [contractRes, userRes] = await Promise.all([
+        API.get('/contracts'),
+        API.get('/users/directory')
+      ]);
+      setContracts(contractRes.data);
+      setPeople(userRes.data);
+      setForm(emptyForm);
+      setModalOpen(true);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to load create form');
+    }
+  };
+
+  const createObligation = async (event) => {
+    event.preventDefault();
+    try {
+      await API.post('/obligations', form);
+      setModalOpen(false);
+      setToast({ type: 'success', message: 'Obligation created' });
+      fetchObligations();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to create obligation');
+    }
+  };
+
   const updateStatus = async (id, status) => {
     try {
       await API.put(`/obligations/${id}`, { status });
@@ -45,13 +84,18 @@ const Obligations = () => {
 
   return (
     <div className="space-y-8">
+      {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Compliance workspace</p>
           <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">Obligations</h1>
           <p className="mt-2 text-slate-500">Track every promise, owner, and deadline before it becomes a risk.</p>
         </div>
-        <div className="hidden h-12 w-12 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8] sm:flex"><ShieldCheck className="h-6 w-6" /></div>
+        {canCreate ? (
+          <button onClick={openCreate} className="rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white">New obligation</button>
+        ) : (
+          <div className="hidden h-12 w-12 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8] sm:flex"><ShieldCheck className="h-6 w-6" /></div>
+        )}
       </div>
 
       {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -106,6 +150,32 @@ const Obligations = () => {
           </table>
         )}
       </div>
+
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Create obligation"
+        footer={
+          <>
+            <button onClick={() => setModalOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
+            <button form="obligation-form" className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white">Save</button>
+          </>
+        }
+      >
+        <form id="obligation-form" onSubmit={createObligation} className="space-y-3">
+          <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
+          <select required value={form.contract} onChange={(e) => setForm({ ...form, contract: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm">
+            <option value="">Select contract</option>
+            {contracts.map((contract) => <option key={contract._id} value={contract._id}>{contract.contractNumber} · {contract.title}</option>)}
+          </select>
+          <select required value={form.assignedTo} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm">
+            <option value="">Assign to</option>
+            {people.map((person) => <option key={person._id} value={person._id}>{person.name}</option>)}
+          </select>
+          <input required type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
+          <textarea placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
+        </form>
+      </Modal>
     </div>
   );
 };

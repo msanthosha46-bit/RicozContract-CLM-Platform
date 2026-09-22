@@ -57,6 +57,8 @@ const CreateContract = () => {
               <option value="NDA">NDA</option>
               <option value="SLA">SLA</option>
               <option value="Employment">Employment</option>
+              <option value="Partnership">Partnership</option>
+              <option value="Other">Other</option>
             </select>
           </div>
         </div>

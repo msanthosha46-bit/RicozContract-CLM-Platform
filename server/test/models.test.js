@@ -38,6 +38,14 @@ test('milestone defaults to Pending', () => {
   assert.equal(milestone.validateSync(), undefined);
 });
 
+test('employee cannot access unassigned contracts', () => {
+  const { canAccessContract } = require('../utils/access');
+  const employee = { _id: objectId, role: 'Employee' };
+  const contract = { createdBy: '507f1f77bcf86cd799439012', assignedUser: null };
+  assert.equal(canAccessContract(employee, contract), false);
+  assert.equal(canAccessContract({ _id: objectId, role: 'Admin' }, contract), true);
+});
+
 test('obligation rejects an unknown status', () => {
   const obligation = new Obligation({
     contract: objectId,

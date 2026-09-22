@@ -1,36 +1,41 @@
 import React, { useEffect, useState } from 'react';
 import API from '../services/api';
-import { AlertTriangle, CalendarClock } from 'lucide-react';
+import { CalendarClock } from 'lucide-react';
+import Modal from '../components/Layout/Common/Modal';
+import Toast from '../components/Layout/Common/Toast';
 
 const RenewalManagement = () => {
   const [expiringContracts, setExpiringContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [newEndDate, setNewEndDate] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const fetchExpiringContracts = async () => {
+    try {
+      setLoading(true);
+      const { data } = await API.get('/renewals/expiring');
+      setExpiringContracts(data);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to load renewals');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchExpiringContracts = async () => {
-      try {
-        setLoading(true);
-        const { data } = await API.get('/renewals/expiring');
-        setExpiringContracts(data);
-      } catch (err) {
-        setError(err.response?.data?.message || 'Unable to load renewals');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchExpiringContracts();
   }, []);
 
-  const renewContract = async (contractId) => {
-    const newEndDate = window.prompt('Enter new end date (YYYY-MM-DD):');
-    if (!newEndDate) return;
-
+  const renewContract = async (event) => {
+    event.preventDefault();
     try {
-      await API.post(`/renewals/renew/${contractId}`, { newEndDate, notes: 'Renewed from dashboard' });
-      const { data } = await API.get('/renewals/expiring');
-      setExpiringContracts(data);
+      await API.post(`/renewals/renew/${selected._id}`, { newEndDate, notes: notes || 'Renewed from workspace' });
+      setSelected(null);
+      setToast({ type: 'success', message: 'Contract renewed and kept active' });
+      await fetchExpiringContracts();
     } catch (err) {
       setError(err.response?.data?.message || 'Renewal failed');
     }
@@ -42,6 +47,7 @@ const RenewalManagement = () => {
 
   return (
     <div className="space-y-8">
+      {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
       <div>
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Lifecycle</p>
         <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">Renewal management</h1>
@@ -79,7 +85,11 @@ const RenewalManagement = () => {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
-                      onClick={() => renewContract(contract._id)}
+                      onClick={() => {
+                        setSelected(contract);
+                        setNewEndDate('');
+                        setNotes('');
+                      }}
                       className="inline-flex items-center gap-2 rounded-xl bg-[#0f172a] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1e293b]"
                     >
                       <CalendarClock className="h-3.5 w-3.5" /> Renew
@@ -91,6 +101,26 @@ const RenewalManagement = () => {
           </table>
         )}
       </div>
+
+      <Modal
+        isOpen={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        title={selected ? `Renew ${selected.contractNumber}` : 'Renew contract'}
+        footer={
+          <>
+            <button onClick={() => setSelected(null)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
+            <button form="renew-form" className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white">Confirm renewal</button>
+          </>
+        }
+      >
+        <form id="renew-form" onSubmit={renewContract} className="space-y-3">
+          <label className="block text-sm font-medium">
+            New end date
+            <input required type="date" value={newEndDate} onChange={(event) => setNewEndDate(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 p-3" />
+          </label>
+          <textarea placeholder="Notes" value={notes} onChange={(event) => setNotes(event.target.value)} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
+        </form>
+      </Modal>
     </div>
   );
 };

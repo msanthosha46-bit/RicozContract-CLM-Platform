@@ -5,7 +5,7 @@ const Renewal = require('../models/Renewal');
 const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
 
-router.get('/expiring', protect, async (req, res) => {
+router.get('/expiring', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
   try {
     const now = new Date();
     const future90Days = new Date();
@@ -18,11 +18,11 @@ router.get('/expiring', protect, async (req, res) => {
 
     res.json(contracts);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 
-router.post('/renew/:contractId', protect, authorize('Admin', 'Manager'), async (req, res) => {
+router.post('/renew/:contractId', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
   try {
     const { newEndDate, notes } = req.body;
     const parsedEndDate = new Date(newEndDate);
@@ -38,7 +38,7 @@ router.post('/renew/:contractId', protect, authorize('Admin', 'Manager'), async 
 
     const oldEndDate = contract.endDate;
     contract.endDate = parsedEndDate;
-    contract.status = 'Renewed';
+    contract.status = 'Active';
     await contract.save();
 
     const renewal = await Renewal.create({
@@ -52,7 +52,7 @@ router.post('/renew/:contractId', protect, authorize('Admin', 'Manager'), async 
     await logActivity(req.user._id, 'Contract Renewed', contract._id, `Renewed until ${newEndDate}`);
     res.status(201).json(renewal);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    next(error);
   }
 });
 
