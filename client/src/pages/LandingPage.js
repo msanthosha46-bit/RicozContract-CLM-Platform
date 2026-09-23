@@ -51,7 +51,7 @@ const LandingPage = () => {
               RZ
             </div>
             <div className="text-xl font-black leading-none tracking-[-0.04em] text-[#111827] md:text-2xl">
-              Ricoz<span className="text-[#1f2a44]">Invoice</span>
+              Ricoz<span className="text-[#1f2a44]">Contract</span>
             </div>
           </div>
 
