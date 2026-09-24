@@ -3,6 +3,7 @@ import { AuthContext } from '../context/AuthContext';
 import API from '../services/api';
 import { LogOut, UserCircle2, Briefcase, Mail, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import Toast from '../components/Layout/Common/Toast';
+import PasswordInput from '../components/PasswordInput';
 
 const Profile = () => {
   const { user, logout, updateProfile } = useContext(AuthContext);
@@ -94,11 +95,11 @@ const Profile = () => {
               </label>
               <label className="rounded-2xl border border-slate-100 bg-[#f7f7f8] p-4 text-sm">
                 Current password
-                <input type="password" value={form.currentPassword} onChange={(event) => setForm({ ...form, currentPassword: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-2" />
+                <PasswordInput name="currentPassword" autoComplete="current-password" value={form.currentPassword} onChange={(event) => setForm({ ...form, currentPassword: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-2" />
               </label>
               <label className="rounded-2xl border border-slate-100 bg-[#f7f7f8] p-4 text-sm">
                 New password
-                <input type="password" minLength="6" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-2" />
+                <PasswordInput name="newPassword" autoComplete="new-password" minLength="6" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-2" />
               </label>
             </div>
             <button disabled={saving} className="mt-5 rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">

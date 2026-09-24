@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import API from '../services/api';
+import PasswordInput from '../components/PasswordInput';
 
 const ResetPassword = () => {
 	const [searchParams] = useSearchParams();
@@ -94,9 +95,8 @@ const ResetPassword = () => {
 							<form onSubmit={handleSubmit} className="space-y-5">
 								<label className="block text-sm font-medium text-[#334155]">
 									New password
-									<input
+									<PasswordInput
 										name="password"
-										type="password"
 										autoComplete="new-password"
 										required
 										minLength="6"
@@ -108,9 +108,8 @@ const ResetPassword = () => {
 
 								<label className="block text-sm font-medium text-[#334155]">
 									Confirm new password
-									<input
+									<PasswordInput
 										name="confirmPassword"
-										type="password"
 										autoComplete="new-password"
 										required
 										minLength="6"

@@ -2,11 +2,12 @@ import React, { useContext, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import GoogleSignInButton from '../components/GoogleSignInButton';
+import PasswordInput from '../components/PasswordInput';
 
 const Register = () => {
 	const { register, loginWithGoogle } = useContext(AuthContext);
 	const navigate = useNavigate();
-	const [form, setForm] = useState({ name: '', email: '', password: '', department: '' });
+	const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', department: '' });
 	const [error, setError] = useState('');
 	const [loading, setLoading] = useState(false);
 
@@ -19,8 +20,15 @@ const Register = () => {
 		setError('');
 		setLoading(true);
 
+		if (form.password !== form.confirmPassword) {
+			setError('Passwords do not match.');
+			setLoading(false);
+			return;
+		}
+
 		try {
-			await register(form);
+			const { confirmPassword, ...payload } = form;
+			await register(payload);
 			navigate('/dashboard', { replace: true });
 		} catch (requestError) {
 			setError(requestError.response?.data?.message || 'Unable to create your account.');
@@ -104,7 +112,11 @@ const Register = () => {
 							</label>
 							<label className="block text-sm font-medium text-[#334155]">
 								Password
-								<input name="password" type="password" required minLength="6" value={form.password} onChange={handleChange} className="mt-2 w-full rounded-xl border border-[#dfe7f1] bg-[#f8fafc] px-3 py-3 text-[#0f172a] outline-none transition focus:border-[#d51d29] focus:bg-white focus:ring-4 focus:ring-red-100" />
+								<PasswordInput name="password" autoComplete="new-password" required minLength="6" value={form.password} onChange={handleChange} className="mt-2 w-full rounded-xl border border-[#dfe7f1] bg-[#f8fafc] px-3 py-3 text-[#0f172a] outline-none transition focus:border-[#d51d29] focus:bg-white focus:ring-4 focus:ring-red-100" />
+							</label>
+							<label className="block text-sm font-medium text-[#334155]">
+								Confirm password
+								<PasswordInput name="confirmPassword" autoComplete="new-password" required minLength="6" value={form.confirmPassword} onChange={handleChange} className="mt-2 w-full rounded-xl border border-[#dfe7f1] bg-[#f8fafc] px-3 py-3 text-[#0f172a] outline-none transition focus:border-[#d51d29] focus:bg-white focus:ring-4 focus:ring-red-100" />
 							</label>
 							<button type="submit" disabled={loading} className="w-full rounded-xl bg-[#d51d29] px-4 py-3.5 font-semibold text-white shadow-lg shadow-red-200 transition hover:bg-[#b91c26] disabled:cursor-not-allowed disabled:opacity-70">
 								{loading ? 'Creating account...' : 'Create account'}

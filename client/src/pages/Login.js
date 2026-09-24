@@ -2,6 +2,7 @@ import React, { useContext, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import GoogleSignInButton from '../components/GoogleSignInButton';
+import PasswordInput from '../components/PasswordInput';
 
 const Login = () => {
 	const { login, loginWithGoogle } = useContext(AuthContext);
@@ -115,10 +116,9 @@ const Login = () => {
 									Forgot Password?
 								</Link>
 							</div>
-							<input
+							<PasswordInput
 								id="login-password"
 								name="password"
-								type="password"
 								autoComplete="current-password"
 								required
 								value={form.password}
