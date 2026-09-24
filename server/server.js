@@ -87,7 +87,13 @@ let server;
 let overdueTimer;
 
 const runOverdueUpdate = () => {
-  markOverdueItems().catch((error) => console.error('Overdue update failed:', error.message));
+  markOverdueItems()
+    .then((result) => {
+      if (result && (result.obligations || result.milestones)) {
+        console.log(`Overdue update: ${result.obligations} obligations, ${result.milestones} milestones marked Overdue`);
+      }
+    })
+    .catch((error) => console.error('Overdue update failed:', error.message));
 };
 
 const connectWithRetry = async () => {

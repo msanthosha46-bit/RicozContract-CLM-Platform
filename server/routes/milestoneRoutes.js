@@ -6,15 +6,31 @@ const User = require('../models/User');
 const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
 const { canAccessContract } = require('../utils/access');
+const { applyItemUpdate } = require('../utils/itemUpdate');
 
 router.get('/', protect, async (req, res, next) => {
   try {
     const query = req.user.role === 'Employee' ? { assignedTo: req.user._id } : {};
     const milestones = await Milestone.find(query)
-      .populate('contract', 'title contractNumber')
+      .populate('contract', 'title contractNumber isArchived')
       .populate('assignedTo', 'name email')
       .sort({ dueDate: 1 });
     res.json(milestones);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id', protect, async (req, res, next) => {
+  try {
+    const milestone = await Milestone.findById(req.params.id)
+      .populate('contract', 'title contractNumber isArchived')
+      .populate('assignedTo', 'name email');
+    if (!milestone) return res.status(404).json({ message: 'Milestone not found' });
+    if (req.user.role === 'Employee' && milestone.assignedTo?._id?.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You can only view milestones assigned to you' });
+    }
+    res.json(milestone);
   } catch (error) {
     next(error);
   }
@@ -63,18 +79,20 @@ router.put('/:id', protect, async (req, res, next) => {
   try {
     const milestone = await Milestone.findById(req.params.id);
     if (!milestone) return res.status(404).json({ message: 'Milestone not found' });
-    if (req.user.role === 'Employee' && milestone.assignedTo.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'You can only update milestones assigned to you' });
+
+    const contract = await Contract.findById(milestone.contract).select('isArchived status');
+    const result = await applyItemUpdate({ req, item: milestone, contract, label: 'milestone' });
+    if (result.error) {
+      return res.status(result.error.status).json({ message: result.error.message });
     }
 
-    const allowedStatuses = ['Pending', 'In Progress', 'Completed', 'Overdue'];
-    if (!allowedStatuses.includes(req.body.status)) {
-      return res.status(400).json({ message: 'Invalid milestone status' });
-    }
-
-    milestone.status = req.body.status;
     await milestone.save();
-    await logActivity(req.user._id, 'Milestone Status Updated', milestone.contract, `Updated status to ${milestone.status}`);
+    const isStatusOnly = result.changes.length === 1 && result.changes[0] === 'status';
+    if (isStatusOnly) {
+      await logActivity(req.user._id, 'Milestone Status Updated', milestone.contract, `Updated status to ${milestone.status}`);
+    } else {
+      await logActivity(req.user._id, 'Milestone Updated', milestone.contract, `Updated milestone '${milestone.title}' (status: ${milestone.status})`);
+    }
     res.json(milestone);
   } catch (error) {
     next(error);
@@ -82,3 +100,4 @@ router.put('/:id', protect, async (req, res, next) => {
 });
 
 module.exports = router;
+
