@@ -4,6 +4,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const markOverdueItems = require('./utils/overdueUpdater');
+const expireEligibleContracts = require('./utils/expiryUpdater');
 
 dotenv.config();
 
@@ -85,6 +86,7 @@ const DB_RETRY_DELAY_MS = 3000;
 
 let server;
 let overdueTimer;
+let expiryTimer;
 
 const runOverdueUpdate = () => {
   markOverdueItems()
@@ -94,6 +96,16 @@ const runOverdueUpdate = () => {
       }
     })
     .catch((error) => console.error('Overdue update failed:', error.message));
+};
+
+const runExpiryUpdate = () => {
+  expireEligibleContracts()
+    .then((result) => {
+      if (result && result.expired > 0) {
+        console.log(`Expiry update: ${result.expired} contract(s) marked Expired`);
+      }
+    })
+    .catch((error) => console.error('Expiry update failed:', error.message));
 };
 
 const connectWithRetry = async () => {
@@ -122,6 +134,8 @@ const startServer = async () => {
     console.log(`🚀 RicozContract Server running on port ${PORT}`);
     runOverdueUpdate();
     overdueTimer = setInterval(runOverdueUpdate, 60 * 60 * 1000);
+    runExpiryUpdate();
+    expiryTimer = setInterval(runExpiryUpdate, 60 * 60 * 1000);
   });
 };
 
@@ -129,6 +143,7 @@ const startServer = async () => {
 const shutdown = async (signal) => {
   console.log(`${signal} received, shutting down gracefully...`);
   if (overdueTimer) clearInterval(overdueTimer);
+  if (expiryTimer) clearInterval(expiryTimer);
 
   const forceExitTimer = setTimeout(() => {
     console.error('Graceful shutdown timed out after 10s; forcing exit.');
