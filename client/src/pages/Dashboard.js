@@ -8,71 +8,70 @@ import {
   FileText,
   Layers,
   Plus,
+  RefreshCw,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AuthContext } from '../context/AuthContext';
 
+const currencyLocale = (currency) => (currency === 'INR' ? 'en-IN' : 'en-US');
+
+const formatCurrency = (value, currency = 'USD') => {
+  const safe = Number(value) || 0;
+  const locale = currencyLocale(currency);
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(safe);
+};
+
+const totalLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(r.total, r.currency)}`) : [formatCurrency(0)]);
+const activeLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(r.active, r.currency)}`) : [formatCurrency(0)]);
+const outstandingLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(Math.max(r.total - r.active, 0), r.currency)}`) : [formatCurrency(0)]);
+
 const Dashboard = () => {
   const { user } = useContext(AuthContext);
   const [metrics, setMetrics] = useState(null);
   const [statusBreakdown, setStatusBreakdown] = useState([]);
+  const [valueByCurrency, setValueByCurrency] = useState([]);
   const [recentContracts, setRecentContracts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const canViewReports = ['Admin', 'Manager'].includes(user?.role);
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const cntRes = await API.get('/contracts?sort=newest');
-        const contracts = cntRes.data;
-        setRecentContracts(contracts.slice(0, 5));
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await API.get('/reports/dashboard');
+      setMetrics(data.metrics);
+      setStatusBreakdown(data.statusBreakdown || []);
+      setValueByCurrency(data.valueByCurrency || []);
+      setRecentContracts(data.recentContracts || []);
+    } catch (err) {
+      setMetrics(null);
+      setStatusBreakdown([]);
+      setValueByCurrency([]);
+      setRecentContracts([]);
+      setError(err.response?.data?.message || 'Unable to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        if (canViewReports) {
-          const repRes = await API.get('/reports/summary');
-          setMetrics(repRes.data.metrics);
-          setStatusBreakdown(repRes.data.statusBreakdown || []);
-        } else {
-          const counts = contracts.reduce((acc, contract) => {
-            acc[contract.status] = (acc[contract.status] || 0) + 1;
-            return acc;
-          }, {});
-          setMetrics({
-            total: contracts.length,
-            active: contracts.filter((contract) => contract.status === 'Active').length,
-            pending: contracts.filter((contract) => contract.status === 'Pending Approval').length,
-            expiringSoon: contracts.filter((contract) => {
-              const end = new Date(contract.endDate).getTime();
-              const soon = Date.now() + 30 * 24 * 60 * 60 * 1000;
-              return contract.status === 'Active' && end >= Date.now() && end <= soon;
-            }).length,
-          });
-          setStatusBreakdown(Object.entries(counts).map(([_id, count]) => ({ _id, count })));
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  useEffect(() => {
     fetchDashboardData();
-  }, [canViewReports]);
+  }, []);
 
   if (loading) return <div className="p-8 text-slate-500">Loading Dashboard...</div>;
 
-  const totalValue = recentContracts.reduce((sum, contract) => sum + Number(contract.amount || 0), 0);
-  const activeValue = recentContracts
-    .filter((contract) => contract.status === 'Active')
-    .reduce((sum, contract) => sum + Number(contract.amount || 0), 0);
-  const outstandingValue = Math.max(totalValue - activeValue, 0);
-  const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
+  const totalValue = totalLines(valueByCurrency);
+  const activeValue = activeLines(valueByCurrency);
+  const outstandingValue = outstandingLines(valueByCurrency);
   const chartData = statusBreakdown.map((item) => ({ status: item._id, count: item.count }));
 
   const summaryCards = [
-    { label: 'Total contract value', value: totalValue, detail: `${metrics?.total || 0} contracts in this period`, icon: Layers, accent: 'border-t-[#0f1d3a]', iconColor: 'text-[#0f1d3a]' },
+    { label: 'Total contract value', value: totalValue, detail: `${metrics?.total || 0} contracts in your repository`, icon: Layers, accent: 'border-t-[#0f1d3a]', iconColor: 'text-[#0f1d3a]' },
     { label: 'Active value', value: activeValue, detail: `${metrics?.active || 0} active contracts`, icon: CheckCircle2, accent: 'border-t-[#16a36b]', iconColor: 'text-[#16a36b]' },
     { label: 'Outstanding value', value: outstandingValue, detail: `${metrics?.pending || 0} awaiting approval`, icon: FileText, accent: 'border-t-[#d51d29]', iconColor: 'text-[#d51d29]' },
-    { label: 'Expiring soon', value: metrics?.expiringSoon || 0, detail: 'Within the next 30 days', icon: AlertTriangle, accent: 'border-t-[#f59e0b]', iconColor: 'text-[#f59e0b]', isCount: true },
+    { label: 'Expiring soon', value: [String(metrics?.expiringSoon || 0)], detail: 'Within the next 30 days', icon: AlertTriangle, accent: 'border-t-[#f59e0b]', iconColor: 'text-[#f59e0b]', isCount: true },
   ];
 
   return (
@@ -91,12 +90,25 @@ const Dashboard = () => {
         </div>
       </section>
 
+      {error && (
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button onClick={fetchDashboardData} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">
+            <RefreshCw className="h-3 w-3" /> Retry
+          </button>
+        </div>
+      )}
+
       <section>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map(({ label, value, detail, icon: Icon, accent, iconColor, isCount }) => (
             <div key={label} className={`rounded-2xl border border-slate-200 border-t-4 ${accent} bg-white p-6 shadow-sm`}>
               <div className="flex items-start justify-between"><span className="text-sm font-semibold text-slate-500">{label}</span><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50"><Icon className={`h-5 w-5 ${iconColor}`} /></span></div>
-              <div className="mt-6 text-3xl font-black tracking-[-0.06em] text-[#0f1d3a]">{isCount ? value : formatCurrency(value)}</div>
+              <div className="mt-6 space-y-1">
+                {value.map((line, index) => (
+                  <div key={index} className={`${isCount ? 'text-4xl' : 'text-2xl'} font-black tracking-[-0.06em] text-[#0f1d3a]`}>{line}</div>
+                ))}
+              </div>
               <p className="mt-1 text-sm text-slate-500">{detail}</p>
             </div>
           ))}
@@ -151,9 +163,10 @@ const Dashboard = () => {
                   <p className="text-sm font-bold text-[#0f1d3a]">{contract.contractNumber}</p>
                   <StatusBadge status={contract.status} />
                 </div>
-                <span className="font-bold text-[#0f1d3a]">{formatCurrency(contract.amount)}</span>
+                <span className="font-bold text-[#0f1d3a]">{formatCurrency(contract.amount, contract.currency)}</span>
               </div>
             ))}
+            {recentContracts.length === 0 && <div className="text-sm text-slate-500">No contracts yet.</div>}
           </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -174,19 +187,20 @@ const Dashboard = () => {
                 <StatusBadge status={contract.status} />
               </div>
             ))}
+            {recentContracts.length === 0 && <div className="text-sm text-slate-500">No contracts yet.</div>}
           </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-black text-[#0f1d3a]">Value snapshot</h2>
-              <p className="mt-1 text-sm text-slate-500">From recent contracts</p>
+              <p className="mt-1 text-sm text-slate-500">From all contracts in your repository</p>
             </div>
             {canViewReports && <Link to="/reports" className="text-sm font-bold text-[#d51d29]">View all →</Link>}
           </div>
           <div className="mt-6 space-y-4">
-            <div className="flex justify-between border-b border-slate-100 pb-4 text-sm"><span className="text-slate-500">Active</span><strong className="text-[#0f1d3a]">{formatCurrency(activeValue)}</strong></div>
-            <div className="flex justify-between text-sm"><span className="text-slate-500">Awaiting action</span><strong className="text-[#d51d29]">{formatCurrency(outstandingValue)}</strong></div>
+            <div className="flex justify-between border-b border-slate-100 pb-4 text-sm"><span className="text-slate-500">Active</span><div className="text-right"><strong className="block text-[#0f1d3a]">{activeValue.join(' · ')}</strong></div></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-500">Awaiting action</span><div className="text-right"><strong className="block text-[#d51d29]">{outstandingValue.join(' · ')}</strong></div></div>
             <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#d51d29]"><AlertTriangle className="h-4 w-4" /> {metrics?.expiringSoon || 0} contracts need attention</div>
           </div>
         </div>

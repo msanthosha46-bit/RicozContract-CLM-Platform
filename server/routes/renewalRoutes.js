@@ -4,6 +4,7 @@ const Contract = require('../models/Contract');
 const Renewal = require('../models/Renewal');
 const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
+const { canRenewContract } = require('../utils/contractTransitions');
 
 router.get('/expiring', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
   try {
@@ -32,6 +33,12 @@ router.post('/renew/:contractId', protect, authorize('Admin', 'Manager'), async 
 
     const contract = await Contract.findById(req.params.contractId);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
+    if (contract.isArchived) {
+      return res.status(400).json({ message: 'Archived contracts cannot be renewed' });
+    }
+    if (!canRenewContract(contract.status)) {
+      return res.status(400).json({ message: `Contract in state '${contract.status}' cannot be renewed` });
+    }
     if (parsedEndDate <= contract.endDate) {
       return res.status(400).json({ message: 'The renewal date must be after the current end date' });
     }

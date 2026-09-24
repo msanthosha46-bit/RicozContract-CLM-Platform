@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/User');
 const { protect, authorize } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
+const { validatePassword } = require('../utils/passwordReset');
 
 const publicUser = (user) => ({
   _id: user._id,
@@ -33,8 +34,9 @@ router.put('/me', protect, async (req, res, next) => {
       if (!req.body.currentPassword || !(await user.matchPassword(req.body.currentPassword))) {
         return res.status(400).json({ message: 'Current password is incorrect' });
       }
-      if (req.body.newPassword.length < 6) {
-        return res.status(400).json({ message: 'New password must be at least 6 characters' });
+      const passwordError = validatePassword(req.body.newPassword);
+      if (passwordError) {
+        return res.status(400).json({ message: passwordError });
       }
       user.password = req.body.newPassword;
     }
@@ -52,21 +54,30 @@ router.get('/directory', protect, authorize('Admin', 'Manager'), asyncHandler(as
 }));
 
 router.get('/', protect, authorize('Admin'), asyncHandler(async (req, res) => {
-  const users = await User.find({}).select('-password');
+  const users = await User.find({}).select('name email role department status preferences createdAt');
   res.json(users);
 }));
 
 router.put('/:id/role', protect, authorize('Admin'), asyncHandler(async (req, res) => {
   const { role, status } = req.body;
   const user = await User.findById(req.params.id);
-  if (user) {
-    if (role) user.role = role;
-    if (status) user.status = status;
-    await user.save();
-    res.json({ message: 'User updated successfully', user: publicUser(user) });
-  } else {
-    res.status(404).json({ message: 'User not found' });
+  if (!user) return res.status(404).json({ message: 'User not found' });
+
+  if (user.role === 'Admin' && (role !== undefined && role !== 'Admin' || status === 'Inactive')) {
+    const openAdminSlots = await User.countDocuments({
+      role: 'Admin',
+      status: 'Active',
+      _id: { $ne: user._id }
+    });
+    if (openAdminSlots === 0) {
+      return res.status(400).json({ message: 'Cannot demote or deactivate the only active administrator' });
+    }
   }
+
+  if (role !== undefined) user.role = role;
+  if (status !== undefined) user.status = status;
+  await user.save();
+  res.json({ message: 'User updated successfully', user: publicUser(user) });
 }));
 
 module.exports = router;

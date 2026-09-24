@@ -2,23 +2,42 @@ import React, { useEffect, useState } from 'react';
 import API from '../services/api';
 import StatusBadge from '../components/Layout/Common/StatusBadge';
 import { Link } from 'react-router-dom';
-import { Search, Plus, FileText, SlidersHorizontal } from 'lucide-react';
+import { Search, Plus, FileText, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const PAGE_SIZE = 20;
 
 const ContractsList = () => {
   const [contracts, setContracts] = useState([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const fetchContracts = async () => {
     try {
       setLoading(true);
-      const query = new URLSearchParams({ search, status, type }).toString();
+      setError('');
+      const query = new URLSearchParams({ search: debouncedSearch, status, type, page, limit: PAGE_SIZE }).toString();
       const { data } = await API.get(`/contracts?${query}`);
-      setContracts(data);
+      setContracts(data.contracts);
+      setTotal(data.total);
+      setTotalPages(data.totalPages || 1);
     } catch (err) {
-      console.error(err);
+      setContracts([]);
+      setError(err.response?.data?.message || 'Unable to load contracts');
     } finally {
       setLoading(false);
     }
@@ -26,7 +45,11 @@ const ContractsList = () => {
 
   useEffect(() => {
     fetchContracts();
-  }, [search, status, type]);
+  }, [debouncedSearch, status, type, page]);
+
+  const prevPage = () => setPage((value) => Math.max(value - 1, 1));
+  const nextPage = () => setPage((value) => Math.min(value + 1, totalPages));
+  const resultsCount = Math.min(total, PAGE_SIZE);
 
   return (
     <div className="space-y-8">
@@ -46,7 +69,7 @@ const ContractsList = () => {
 
       <div className="flex items-center gap-3 text-sm font-semibold text-slate-700">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eaf1ff] text-[#1d4ed8]"><FileText className="h-4 w-4" /></div>
-        <span>{contracts.length} contracts in your repository</span>
+        <span>{total} contracts in your repository {totalPages > 1 && <span className="font-normal text-slate-400">· page {page} of {totalPages}</span>}</span>
       </div>
 
       <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
@@ -67,7 +90,7 @@ const ContractsList = () => {
 
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => { setStatus(e.target.value); setPage(1); }}
           className="rounded-xl border border-slate-200 bg-[#f8fafc] px-3 py-3 text-sm outline-none focus:border-[#1d4ed8] focus:ring-4 focus:ring-blue-100"
         >
           <option value="">All Statuses</option>
@@ -80,7 +103,7 @@ const ContractsList = () => {
 
         <select
           value={type}
-          onChange={(e) => setType(e.target.value)}
+          onChange={(e) => { setType(e.target.value); setPage(1); }}
           className="rounded-xl border border-slate-200 bg-[#f8fafc] px-3 py-3 text-sm outline-none focus:border-[#1d4ed8] focus:ring-4 focus:ring-blue-100"
         >
           <option value="">All Types</option>
@@ -91,6 +114,10 @@ const ContractsList = () => {
         </select>
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
         {loading ? (
@@ -119,7 +146,7 @@ const ContractsList = () => {
                   <td className="py-3 px-4">{c.type}</td>
                   <td className="py-3 px-4">{c.partyName}</td>
                   <td className="py-3 px-4">{new Date(c.endDate).toLocaleDateString()}</td>
-                  <td className="py-3 px-4 font-medium">{c.currency} {c.amount.toLocaleString()}</td>
+                  <td className="py-3 px-4 font-medium">{c.currency} {Number(c.amount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                   <td className="py-3 px-4"><StatusBadge status={c.status} /></td>
                   <td className="py-3 px-4 text-right space-x-2">
                     <Link to={`/contracts/${c._id}`} className="text-xs font-semibold text-[#1d4ed8] hover:text-[#1e40af]">
@@ -132,6 +159,20 @@ const ContractsList = () => {
           </table>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-end gap-3 text-sm">
+          <span className="text-slate-500">Showing {resultsCount} of {total}</span>
+          <div className="flex items-center gap-1">
+            <button onClick={prevPage} disabled={page <= 1} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40" aria-label="Previous page">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button onClick={nextPage} disabled={page >= totalPages} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40" aria-label="Next page">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -5,11 +5,28 @@ const API = axios.create({
 });
 
 API.interceptors.request.use((config) => {
-  const user = JSON.parse(localStorage.getItem('ricoz_user'));
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem('ricoz_user'));
+  } catch (error) {
+    localStorage.removeItem('ricoz_user');
+  }
   if (user && user.token) {
     config.headers.Authorization = `Bearer ${user.token}`;
   }
   return config;
 });
+
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Never surface the bearer token: strip it from the serialized request
+    // config before the error propagates so console.error(err) can't leak it.
+    if (error && error.config && error.config.headers) {
+      delete error.config.headers.Authorization;
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default API;

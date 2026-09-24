@@ -45,7 +45,7 @@ const Obligations = () => {
   const openCreate = async () => {
     try {
       const [contractRes, userRes] = await Promise.all([
-        API.get('/contracts'),
+        API.get('/contracts?fields=contractNumber,title'),
         API.get('/users/directory')
       ]);
       setContracts(contractRes.data);

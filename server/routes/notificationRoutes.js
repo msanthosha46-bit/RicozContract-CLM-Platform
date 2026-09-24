@@ -4,12 +4,10 @@ const Contract = require('../models/Contract');
 const Approval = require('../models/Approval');
 const Obligation = require('../models/Obligation');
 const { protect } = require('../middleware/auth');
-const markOverdueItems = require('../utils/overdueUpdater');
 const { employeeContractScope } = require('../utils/access');
 
 router.get('/', protect, async (req, res, next) => {
   try {
-    await markOverdueItems();
     const items = [];
     const now = new Date();
     const in30Days = new Date();

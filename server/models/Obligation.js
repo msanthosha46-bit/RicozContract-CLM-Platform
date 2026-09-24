@@ -9,4 +9,8 @@ const obligationSchema = new mongoose.Schema({
   status: { type: String, enum: ['Pending', 'In Progress', 'Completed', 'Overdue'], default: 'Pending' }
 }, { timestamps: true });
 
+obligationSchema.index({ status: 1 });
+obligationSchema.index({ assignedTo: 1, status: 1 });
+obligationSchema.index({ dueDate: 1 });
+
 module.exports = mongoose.model('Obligation', obligationSchema);

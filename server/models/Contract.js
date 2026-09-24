@@ -20,4 +20,13 @@ const contractSchema = new mongoose.Schema({
   isArchived: { type: Boolean, default: false }
 }, { timestamps: true });
 
+// Indexes justified by the queries actually executed: status-scoped listing and
+// metric counts, expiring-soon windows, employee-scoped access (createdBy /
+// assignedUser), and newest-first repository ordering.
+contractSchema.index({ status: 1, isArchived: 1 });
+contractSchema.index({ isArchived: 1, status: 1, endDate: 1 });
+contractSchema.index({ createdBy: 1, isArchived: 1 });
+contractSchema.index({ assignedUser: 1, isArchived: 1 });
+contractSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('Contract', contractSchema);

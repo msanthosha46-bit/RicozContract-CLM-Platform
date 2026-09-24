@@ -4,6 +4,7 @@ import API from '../services/api';
 import StatusBadge from '../components/Layout/Common/StatusBadge';
 import { ArrowLeft, Pencil, FileText, Upload, Download, BadgeCheck } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
+import { canSubmitForApproval } from '../utils/contractTransitions';
 import Modal from '../components/Layout/Common/Modal';
 import Toast from '../components/Layout/Common/Toast';
 
@@ -116,7 +117,7 @@ const ContractDetails = () => {
           <Link to={`/contracts/${id}/edit`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             <Pencil className="w-4 h-4" /> Edit
           </Link>
-          {contract.status !== 'Pending Approval' && contract.status !== 'Active' && (
+          {canSubmitForApproval(contract.status) && (
             <button onClick={handleSubmitForApproval} className="inline-flex items-center gap-2 rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1e293b]">
               <BadgeCheck className="w-4 h-4" /> Submit for Approval
             </button>

@@ -19,9 +19,15 @@ if (!process.env.CLIENT_URL) {
 
 const app = express();
 
+// Render sits behind a reverse proxy; trust the first hop so req.ip (used by
+// rate limiting) reflects the client instead of the proxy address.
+app.set('trust proxy', 1);
+
+// Normalize origins (trailing slashes) so `https://example.com/` matches
+// `https://example.com` — a common cause of CORS breaks in production.
 const allowedOrigins = (process.env.CLIENT_URL || '')
 	.split(',')
-	.map((origin) => origin.trim())
+	.map((origin) => origin.trim().replace(/\/+$/, ''))
 	.filter(Boolean);
 
 app.use(cors({

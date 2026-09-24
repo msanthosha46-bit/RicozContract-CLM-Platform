@@ -35,6 +35,12 @@ const resetPasswordLimiter = createRateLimiter({
   message: 'Too many password reset attempts. Please try again in 15 minutes.'
 });
 
+const loginLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Too many login attempts. Please try again in 15 minutes.'
+});
+
 // Identical response whether or not the email exists (no account enumeration).
 const FORGOT_PASSWORD_MESSAGE =
   'If an account exists for that email, a password reset link has been sent.';
@@ -48,12 +54,29 @@ const RESET_TOKEN_PATTERN = /^[a-fA-F0-9]{64}$/;
 router.post('/register', async (req, res, next) => {
   try {
     const { name, email, password, department } = req.body;
-    const userExists = await User.findOne({ email });
+    if (typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ message: 'Name is required' });
+    }
+    if (typeof email !== 'string' || !EMAIL_PATTERN.test(email.trim())) {
+      return res.status(400).json({ message: 'Please enter a valid email address.' });
+    }
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ message: passwordError });
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const userExists = await User.findOne({ email: normalizedEmail });
     if (userExists) return res.status(400).json({ message: 'User already exists' });
 
     // Role is always 'Employee' at registration; Admin/Manager roles are only
     // ever assigned by an existing Admin through the user management routes.
-    const user = await User.create({ name, email, password, role: 'Employee', department });
+    const user = await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      password,
+      role: 'Employee',
+      department
+    });
     res.status(201).json({
       _id: user._id,
       name: user.name,
@@ -69,7 +92,7 @@ router.post('/register', async (req, res, next) => {
   }
 });
 
-router.post('/login', async (req, res, next) => {
+router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });

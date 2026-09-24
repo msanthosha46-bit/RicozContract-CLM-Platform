@@ -8,4 +8,6 @@ const renewalSchema = new mongoose.Schema({
   notes: { type: String }
 }, { timestamps: true });
 
+renewalSchema.index({ contract: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Renewal', renewalSchema);

@@ -2,12 +2,14 @@ import React, { useContext, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import API from '../services/api';
 import { AuthContext } from '../context/AuthContext';
+import { canTransition, getManualEditTargets } from '../utils/contractTransitions';
 
 const EditContract = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
   const canEditStatus = ['Admin', 'Manager'].includes(user?.role);
+  const [currentStatus, setCurrentStatus] = useState('Draft');
   const [formData, setFormData] = useState({
     title: '',
     type: 'Vendor',
@@ -37,6 +39,7 @@ const EditContract = () => {
           currency: data.currency || 'USD',
           status: data.status || 'Draft'
         });
+        setCurrentStatus(data.status || 'Draft');
       } catch (err) {
         setError(err.response?.data?.message || 'Unable to load contract');
       } finally {
@@ -51,6 +54,10 @@ const EditContract = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (canEditStatus && formData.status !== currentStatus && !canTransition(currentStatus, formData.status)) {
+      setError(`Status cannot change from '${currentStatus}' to '${formData.status}'. Please pick an allowed option.`);
+      return;
+    }
     try {
       const payload = { ...formData };
       if (!canEditStatus) delete payload.status;
@@ -128,13 +135,13 @@ const EditContract = () => {
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
           <select name="status" value={formData.status} onChange={handleChange} className="w-full border p-2 rounded text-sm">
-            <option value="Draft">Draft</option>
-            <option value="Pending Approval">Pending Approval</option>
-            <option value="Active">Active</option>
-            <option value="Expired">Expired</option>
-            <option value="Renewed">Renewed</option>
-            <option value="Closed">Closed</option>
+            {getManualEditTargets(currentStatus).map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
           </select>
+          <p className="mt-1 text-xs text-slate-500">
+            From 'Draft' or 'Rejected', submit via the contract page for approval. Only the backend-approved moves are offered.
+          </p>
         </div>
         )}
 

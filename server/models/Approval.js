@@ -9,4 +9,7 @@ const approvalSchema = new mongoose.Schema({
   decisionDate: { type: Date }
 }, { timestamps: true });
 
+approvalSchema.index({ status: 1, createdAt: -1 });
+approvalSchema.index({ contract: 1, status: 1 });
+
 module.exports = mongoose.model('Approval', approvalSchema);
