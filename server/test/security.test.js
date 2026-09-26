@@ -159,6 +159,25 @@ test('register rejects weak passwords and missing/invalid name/email', async () 
   assert.match(badEmail.data.message, /valid email/);
 });
 
+test('a disabled account is refused with the generic message, never a distinct one', async () => {
+  // Placed before the rate-limit test on purpose: every login outcome must be
+  // reachable within the allowance.
+  const email = 'disabled.login@ricoz.test';
+  await createUser({ name: 'Disabled Login', email, password: 'Password123!', status: 'Inactive' });
+
+  const correct = await api('POST', '/api/auth/login', { body: { email, password: 'Password123!' } });
+  assert.equal(correct.status, 401);
+  assert.equal(correct.data.message, 'Invalid email or password');
+  assert.equal(correct.data.token, undefined, 'a disabled account must not receive a token');
+
+  const wrong = await api('POST', '/api/auth/login', { body: { email, password: 'WrongPassword1!' } });
+  assert.equal(wrong.status, 401);
+  // The same wording as an unknown address, so the response cannot reveal that
+  // the account exists and is switched off.
+  assert.equal(wrong.data.message, correct.data.message);
+  assert.doesNotMatch(wrong.data.message, /inactive/i);
+});
+
 test('login endpoint is rate limited', async () => {
   let sawRateLimit = false;
   for (let attempt = 0; attempt < 14; attempt += 1) {

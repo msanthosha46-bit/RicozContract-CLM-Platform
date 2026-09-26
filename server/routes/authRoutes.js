@@ -41,6 +41,36 @@ const loginLimiter = createRateLimiter({
   message: 'Too many login attempts. Please try again in 15 minutes.'
 });
 
+// Public sign-up and Google entry points are also throttled so the API cannot
+// be used to mass-create accounts or to hammer Google's token verification.
+const registerLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many account requests. Please try again in 15 minutes.'
+});
+
+const googleLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many Google sign-in attempts. Please try again in 15 minutes.'
+});
+
+// One response for every failed sign-in, so neither the account state nor the
+// password can be probed from the response.
+const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password';
+
+// A real bcrypt hash of an unguessable value. Comparing against it when no
+// account matches keeps the response time of an unknown address close to that
+// of a wrong password, which would otherwise reveal which emails are registered.
+let decoyHashPromise = null;
+const getDecoyHash = () => {
+  if (!decoyHashPromise) {
+    decoyHashPromise = require('bcryptjs')
+      .hash(`decoy-${require('crypto').randomBytes(24).toString('hex')}`, 10);
+  }
+  return decoyHashPromise;
+};
+
 // Identical response whether or not the email exists (no account enumeration).
 const FORGOT_PASSWORD_MESSAGE =
   'If an account exists for that email, a password reset link has been sent.';
@@ -51,7 +81,7 @@ const INVALID_RESET_LINK_MESSAGE =
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RESET_TOKEN_PATTERN = /^[a-fA-F0-9]{64}$/;
 
-router.post('/register', async (req, res, next) => {
+router.post('/register', registerLimiter, async (req, res, next) => {
   try {
     const { name, email, password, department } = req.body;
     if (typeof name !== 'string' || !name.trim()) {
@@ -66,7 +96,9 @@ router.post('/register', async (req, res, next) => {
     }
     const normalizedEmail = email.trim().toLowerCase();
     const userExists = await User.findOne({ email: normalizedEmail });
-    if (userExists) return res.status(400).json({ message: 'User already exists' });
+    // Same wording whether the address is free or taken, so the endpoint
+    // cannot be used to discover which emails hold an account.
+    if (userExists) return res.status(400).json({ message: 'Unable to create an account with those details.' });
 
     // Role is always 'Employee' at registration; Admin/Manager roles are only
     // ever assigned by an existing Admin through the user management routes.
@@ -96,10 +128,20 @@ router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
-    if (user && user.status === 'Inactive') {
-      return res.status(401).json({ message: 'This account is inactive. Contact an administrator.' });
+    if (!user || !user.password) {
+      // Burn a comparable amount of CPU so a missing account and a wrong
+      // password take about the same time to answer.
+      await require('bcryptjs').compare(String(password ?? ''), await getDecoyHash());
+      return res.status(401).json({ message: INVALID_CREDENTIALS_MESSAGE });
     }
-    if (user && user.password && (await user.matchPassword(password))) {
+    // The password is always compared, even for a disabled account. Rejecting
+    // an inactive user before the comparison would answer orders of magnitude
+    // faster than a wrong password and so reveal that the address exists and
+    // is switched off. All four outcomes below cost one bcrypt comparison.
+    if (await user.matchPassword(password)) {
+      if (user.status === 'Inactive') {
+        return res.status(401).json({ message: INVALID_CREDENTIALS_MESSAGE });
+      }
       res.json({
         _id: user._id,
         name: user.name,
@@ -111,14 +153,14 @@ router.post('/login', loginLimiter, async (req, res, next) => {
         token: generateToken(user)
       });
     } else {
-      res.status(401).json({ message: 'Invalid email or password' });
+      res.status(401).json({ message: INVALID_CREDENTIALS_MESSAGE });
     }
   } catch (error) {
     next(error);
   }
 });
 
-router.post('/google', async (req, res, next) => {
+router.post('/google', googleLimiter, async (req, res, next) => {
   const { credential } = req.body || {};
 
   if (!googleAuth.getGoogleClientId()) {

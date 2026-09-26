@@ -7,6 +7,7 @@ const upload = require('../middleware/upload');
 const Contract = require('../models/Contract');
 const ContractDocument = require('../models/ContractDocument');
 const { protect } = require('../middleware/auth');
+const createRateLimiter = require('../middleware/rateLimit');
 const logActivity = require('../utils/activityLogger');
 const { canAccessContract } = require('../utils/access');
 const { getStorageAdapter, StorageError } = require('../services/storage');
@@ -18,6 +19,16 @@ const {
 } = upload;
 
 const MAX_VERSION_ATTEMPTS = 10;
+
+// Uploads cost real storage and bandwidth, so they are capped per signed-in
+// user. Keying on the user id means one account cannot exhaust the allowance of
+// everyone else sharing an IP.
+const uploadLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: 'Too many uploads. Please try again in 15 minutes.',
+  keyResolver: (req) => (req.user && req.user._id ? String(req.user._id) : null)
+});
 
 const loadAccessibleContract = async (req, res) => {
   const contract = await Contract.findById(req.params.contractId);
@@ -104,7 +115,7 @@ const createDocumentWithVersion = async (payload) => {
   throw versionUnavailableError();
 };
 
-router.post('/upload/:contractId', protect, resolveContractBeforeUpload, upload.single('document'), async (req, res, next) => {
+router.post('/upload/:contractId', protect, uploadLimiter, resolveContractBeforeUpload, upload.single('document'), async (req, res, next) => {
   const storage = getStorageAdapter();
   const originalname = sanitizeOriginalName(req.file?.originalname);
   let storageKey = null;

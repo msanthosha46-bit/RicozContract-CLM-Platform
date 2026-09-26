@@ -7,7 +7,10 @@
 const createRateLimiter = ({
   windowMs = 15 * 60 * 1000,
   max = 5,
-  message = 'Too many requests. Please try again later.'
+  message = 'Too many requests. Please try again later.',
+  // Optional per-caller key (for example the authenticated user id) so one
+  // noisy tenant cannot exhaust the allowance of everyone behind the same IP.
+  keyResolver = null
 } = {}) => {
   const hits = new Map();
 
@@ -19,8 +22,19 @@ const createRateLimiter = ({
   }, windowMs);
   if (typeof sweep.unref === 'function') sweep.unref();
 
-  return (req, res, next) => {
-    const key = req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+  // Named so the middleware is identifiable in stack traces and route stacks.
+  return function rateLimit(req, res, next) {
+    let key;
+    if (typeof keyResolver === 'function') {
+      try {
+        key = keyResolver(req);
+      } catch (error) {
+        key = null;
+      }
+    }
+    if (!key) {
+      key = req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+    }
     const now = Date.now();
     let entry = hits.get(key);
     if (!entry || now - entry.start >= windowMs) {

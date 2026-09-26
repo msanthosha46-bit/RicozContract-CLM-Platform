@@ -1,11 +1,10 @@
-const express = require('express');
 const dotenv = require('dotenv');
-const cors = require('cors');
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const markOverdueItems = require('./utils/overdueUpdater');
 const expireEligibleContracts = require('./utils/expiryUpdater');
 const ContractDocument = require('./models/ContractDocument');
+const { createApp, getAllowedOrigins, isProduction } = require('./app');
 const {
   readDocumentVersionIndexReport,
   describeDocumentIndexReport
@@ -19,74 +18,18 @@ if (missingEnv.length) {
   console.error(`Missing required environment variables: ${missingEnv.join(', ')}`);
   process.exit(1);
 }
-if (!process.env.CLIENT_URL) {
-  console.warn('CLIENT_URL is not set; CORS will allow requests from any origin.');
+if (!getAllowedOrigins().length) {
+  const detail = isProduction()
+    ? 'CORS will reject every browser origin until this is set.'
+    : 'CORS will allow requests from any origin.';
+  console.warn(`CLIENT_URL is not set; ${detail}`);
+}
+if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
+  console.warn('JWT_SECRET is shorter than 32 characters; use a long random value in production.');
 }
 
-const app = express();
+const app = createApp();
 
-// Render sits behind a reverse proxy; trust the first hop so req.ip (used by
-// rate limiting) reflects the client instead of the proxy address.
-app.set('trust proxy', 1);
-
-// Normalize origins (trailing slashes) so `https://example.com/` matches
-// `https://example.com` — a common cause of CORS breaks in production.
-const allowedOrigins = (process.env.CLIENT_URL || '')
-	.split(',')
-	.map((origin) => origin.trim().replace(/\/+$/, ''))
-	.filter(Boolean);
-
-app.use(cors({
-	origin: allowedOrigins.length ? allowedOrigins : true
-}));
-app.use(express.json({ limit: '1mb' }));
-app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'ricoz-contract-server' }));
-
-// Routes
-app.use('/api/auth', require('./routes/authRoutes'));
-app.use('/api/users', require('./routes/userRoutes'));
-app.use('/api/contracts', require('./routes/contractRoutes'));
-app.use('/api/approvals', require('./routes/approvalRoutes'));
-app.use('/api/obligations', require('./routes/obligationRoutes'));
-app.use('/api/milestones', require('./routes/milestoneRoutes'));
-app.use('/api/documents', require('./routes/documentRoutes'));
-app.use('/api/renewals', require('./routes/renewalRoutes'));
-app.use('/api/reports', require('./routes/reportRoutes'));
-app.use('/api/activities', require('./routes/activityRoutes'));
-app.use('/api/notifications', require('./routes/notificationRoutes'));
-
-app.use((req, res) => {
-	res.status(404).json({ message: 'API route not found' });
-});
-
-// Central error handler: map known errors to correct status codes and never
-// expose raw internal error messages to clients.
-app.use((error, req, res, next) => {
-	if (error.name === 'MulterError' && error.code === 'LIMIT_FILE_SIZE') {
-		return res.status(413).json({ message: 'File exceeds the 10 MiB upload limit.' });
-	}
-	if (error.name === 'MulterError' || (typeof error.message === 'string' && error.message.includes('Only PDF'))) {
-		return res.status(400).json({ message: error.message });
-	}
-	if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
-		return res.status(400).json({ message: 'Invalid JSON payload' });
-	}
-	if (error.status >= 400 && error.status < 500 && error.expose) {
-		return res.status(error.status).json({ message: error.message });
-	}
-	if (error.name === 'ValidationError') {
-		const details = Object.values(error.errors || {}).map((detail) => detail.message);
-		return res.status(400).json({ message: 'Validation failed', details });
-	}
-	if (error.name === 'CastError') {
-		return res.status(400).json({ message: `Invalid value for '${error.path}'` });
-	}
-	if (error.code === 11000) {
-		return res.status(409).json({ message: 'A record with the same unique value already exists' });
-	}
-	console.error(error);
-	return res.status(500).json({ message: 'Internal server error' });
-});
 
 const PORT = process.env.PORT || 5000;
 const DB_RETRY_ATTEMPTS = 10;
