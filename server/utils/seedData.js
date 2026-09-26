@@ -11,7 +11,12 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const seed = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ricozcontract');
+    // autoIndex is disabled so seeding can never implicitly build the unique
+    // (contract, version) document index. That index is created only by the
+    // explicit "npm run indexes:sync" procedure.
+    await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ricozcontract', {
+      autoIndex: false
+    });
 
     const existingUsers = await User.countDocuments();
     if (existingUsers > 0 && process.env.FORCE_SEED !== 'true') {

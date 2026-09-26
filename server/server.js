@@ -5,6 +5,11 @@ const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const markOverdueItems = require('./utils/overdueUpdater');
 const expireEligibleContracts = require('./utils/expiryUpdater');
+const ContractDocument = require('./models/ContractDocument');
+const {
+  readDocumentVersionIndexReport,
+  describeDocumentIndexReport
+} = require('./utils/documentIndexes');
 
 dotenv.config();
 
@@ -57,6 +62,9 @@ app.use((req, res) => {
 // Central error handler: map known errors to correct status codes and never
 // expose raw internal error messages to clients.
 app.use((error, req, res, next) => {
+	if (error.name === 'MulterError' && error.code === 'LIMIT_FILE_SIZE') {
+		return res.status(413).json({ message: 'File exceeds the 10 MiB upload limit.' });
+	}
 	if (error.name === 'MulterError' || (typeof error.message === 'string' && error.message.includes('Only PDF'))) {
 		return res.status(400).json({ message: error.message });
 	}
@@ -121,6 +129,24 @@ const connectWithRetry = async () => {
   }
 };
 
+// Verify the document version index on boot. This is a read-only check so an
+// implicit build can never fail silently; the index itself is created only by
+// the explicit "npm run indexes:sync" procedure.
+const reportDocumentVersionIndex = async () => {
+  try {
+    const report = await readDocumentVersionIndexReport(ContractDocument, { maxTimeMS: 5000 });
+    if (report.ready) {
+      console.log(`Document version index ${report.indexName} is present and unique.`);
+      return;
+    }
+    console.warn('Document version index is not ready:');
+    console.warn(describeDocumentIndexReport(report));
+  } catch (error) {
+    console.warn(`Document version index check could not complete: ${error.message}`);
+    console.warn('Run "npm run indexes:check" manually. No data was changed.');
+  }
+};
+
 // Start accepting requests only after the database connection is ready.
 const startServer = async () => {
   try {
@@ -129,6 +155,8 @@ const startServer = async () => {
     console.error(`Unable to connect to MongoDB after ${DB_RETRY_ATTEMPTS} attempts: ${error.message}`);
     process.exit(1);
   }
+
+  await reportDocumentVersionIndex();
 
   server = app.listen(PORT, () => {
     console.log(`🚀 RicozContract Server running on port ${PORT}`);

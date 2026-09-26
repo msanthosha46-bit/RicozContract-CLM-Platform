@@ -2,11 +2,43 @@ import React, { useContext, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import API from '../services/api';
 import StatusBadge from '../components/Layout/Common/StatusBadge';
-import { ArrowLeft, Pencil, FileText, Upload, Download, BadgeCheck } from 'lucide-react';
+import { ArrowLeft, Pencil, FileText, Upload, Download, BadgeCheck, LoaderCircle } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import { canSubmitForApproval } from '../utils/contractTransitions';
 import Modal from '../components/Layout/Common/Modal';
 import Toast from '../components/Layout/Common/Toast';
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const ALLOWED_EXTENSIONS = ['pdf', 'docx', 'doc'];
+
+const formatFileSize = (bytes) => {
+  const size = Number(bytes);
+  if (!Number.isFinite(size) || size < 0) return 'Unknown size';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const uploadValidationMessage = (selectedFile) => {
+  if (!selectedFile) return 'Please choose a file to upload.';
+  const extension = selectedFile.name.split('.').pop()?.toLowerCase();
+  if (!ALLOWED_EXTENSIONS.includes(extension)) return 'Only PDF, DOCX and DOC documents are allowed.';
+  if (selectedFile.size > MAX_UPLOAD_BYTES) return 'File exceeds the 10 MiB upload limit.';
+  return '';
+};
+
+const readErrorMessage = async (error, fallback) => {
+  const data = error?.response?.data;
+  if (data && typeof data.text === 'function') {
+    try {
+      const parsed = JSON.parse(await data.text());
+      return parsed?.message || fallback;
+    } catch (parseError) {
+      return fallback;
+    }
+  }
+  return data?.message || fallback;
+};
 
 const ContractDetails = () => {
   const { id } = useParams();
@@ -16,8 +48,12 @@ const ContractDetails = () => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [downloadId, setDownloadId] = useState(null);
   const [error, setError] = useState('');
+  const [documentError, setDocumentError] = useState('');
   const [file, setFile] = useState(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [toast, setToast] = useState(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const isAdmin = user?.role === 'Admin';
@@ -43,19 +79,33 @@ const ContractDetails = () => {
   }, [id]);
 
   const handleFileUpload = async () => {
-    if (!file) return;
+    const validationError = uploadValidationMessage(file);
+    if (validationError) {
+      setDocumentError(validationError);
+      return;
+    }
+
     try {
       setUploading(true);
-      setError('');
+      setUploadProgress(0);
+      setDocumentError('');
       const formData = new FormData();
       formData.append('document', file);
-      await API.post(`/documents/upload/${id}`, formData);
+      await API.post(`/documents/upload/${id}`, formData, {
+        onUploadProgress: (event) => {
+          if (event.total) setUploadProgress(Math.min(99, Math.round((event.loaded * 100) / event.total)));
+        },
+      });
+      setUploadProgress(100);
       setFile(null);
+      setFileInputKey((value) => value + 1);
+      setToast({ type: 'success', message: 'Document uploaded successfully' });
       await fetchContract();
     } catch (err) {
-      setError(err.response?.data?.message || 'Upload failed');
+      setDocumentError(await readErrorMessage(err, 'Upload failed'));
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -80,15 +130,25 @@ const ContractDetails = () => {
 
   const handleDownload = async (docId, filename) => {
     try {
+      setDownloadId(docId);
+      setDocumentError('');
       const response = await API.get(`/documents/download/${docId}`, { responseType: 'blob' });
+      if (response.data?.type?.includes('application/json')) {
+        const payload = JSON.parse(await response.data.text());
+        throw new Error(payload.message || 'Unable to download file');
+      }
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const anchor = document.createElement('a');
       anchor.href = url;
       anchor.download = filename;
+      document.body.appendChild(anchor);
       anchor.click();
+      anchor.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err.response?.data?.message || 'Unable to download file');
+      setDocumentError(await readErrorMessage(err, err.message || 'Unable to download file'));
+    } finally {
+      setDownloadId(null);
     }
   };
 
@@ -150,37 +210,88 @@ const ContractDetails = () => {
             </div>
           </div>
 
-          <div className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+          <div className="rounded-[26px] border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-4">
               <h2 className="text-lg font-bold text-slate-800">Documents</h2>
-              <span className="text-sm text-slate-500">{documents.length} file(s)</span>
+              <span className="text-sm text-slate-500">{documents.length} {documents.length === 1 ? 'file' : 'files'}</span>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 mb-5">
-              <input type="file" onChange={(e) => setFile(e.target.files[0])} className="flex-1 block w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200" />
-              <button onClick={handleFileUpload} disabled={!file || uploading} className="inline-flex items-center gap-2 rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
-                <Upload className="w-4 h-4" /> {uploading ? 'Uploading...' : 'Upload'}
+            <div className="flex flex-col gap-3 mb-3">
+              <label htmlFor="document-upload" className="sr-only">Choose a contract document</label>
+              <input
+                id="document-upload"
+                key={fileInputKey}
+                type="file"
+                accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                disabled={uploading}
+                onChange={(event) => {
+                  const selectedFile = event.target.files?.[0] || null;
+                  setFile(selectedFile);
+                  setDocumentError(selectedFile ? uploadValidationMessage(selectedFile) : '');
+                }}
+                className="block w-full rounded-xl text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2.5 file:text-slate-700 hover:file:bg-slate-200 disabled:opacity-60"
+              />
+              <button
+                onClick={handleFileUpload}
+                disabled={!file || uploading}
+                aria-busy={uploading}
+                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {uploading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {uploading ? `Uploading ${uploadProgress}%` : 'Upload document'}
               </button>
             </div>
 
+            <p className="mb-5 text-xs text-slate-500">PDF, DOCX or DOC up to 10 MiB. Each upload is stored as a new contract version.</p>
+
+            {uploading && (
+              <div className="mb-5" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={uploadProgress} aria-label="Document upload progress">
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full rounded-full bg-[#0f172a] transition-[width] duration-200" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              </div>
+            )}
+
+            {documentError && (
+              <div role="alert" className="mb-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{documentError}</div>
+            )}
+
             <div className="space-y-3">
               {documents.length === 0 ? (
-                <div className="text-sm text-slate-500 border border-dashed border-slate-200 rounded-lg p-4 text-center">No documents uploaded yet.</div>
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                  <FileText className="mx-auto h-8 w-8 text-slate-400" />
+                  <p className="mt-3 text-sm font-semibold text-slate-700">No documents yet</p>
+                  <p className="mt-1 text-sm text-slate-500">Upload the first signed copy, addendum or supporting file.</p>
+                </div>
               ) : (
-                documents.map((doc) => (
-                  <div key={doc._id} className="flex items-center justify-between gap-4 border border-slate-200 rounded-lg p-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <FileText className="w-5 h-5 text-slate-400 flex-shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-800 truncate">{doc.originalname}</p>
-                        <p className="text-xs text-slate-500">v{doc.version} • {new Date(doc.createdAt).toLocaleDateString()}</p>
+                documents.map((doc) => {
+                  const isDownloading = downloadId === doc._id;
+                  return (
+                    <div key={doc._id} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <FileText className="mt-0.5 h-5 w-5 flex-shrink-0 text-slate-400" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-800">{doc.originalname}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">Version {doc.version}</span>
+                            <span>{formatFileSize(doc.fileSize)}</span>
+                            <span>{new Date(doc.createdAt).toLocaleString()}</span>
+                            {doc.uploadedBy?.name && <span>Uploaded by {doc.uploadedBy.name}</span>}
+                          </div>
+                        </div>
                       </div>
+                      <button
+                        onClick={() => handleDownload(doc._id, doc.originalname)}
+                        disabled={downloadId !== null}
+                        aria-busy={isDownloading}
+                        className="inline-flex w-full flex-shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-blue-600 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                      >
+                        {isDownloading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                        {isDownloading ? 'Downloading' : 'Download'}
+                      </button>
                     </div>
-                    <button onClick={() => handleDownload(doc._id, doc.originalname)} className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700">
-                      <Download className="w-4 h-4" /> Download
-                    </button>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -210,6 +321,8 @@ const ContractDetails = () => {
           </div>
         </div>
       </div>
+
+      {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
     </div>
   );
 };

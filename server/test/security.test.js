@@ -3,7 +3,6 @@
 // rate limiting. Uses its own database so it never touches real data.
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const fs = require('node:fs');
 const jwt = require('jsonwebtoken');
 const test = require('node:test');
 
@@ -25,12 +24,14 @@ const userRoutes = require('../routes/userRoutes');
 const contractRoutes = require('../routes/contractRoutes');
 const approvalRoutes = require('../routes/approvalRoutes');
 const documentRoutes = require('../routes/documentRoutes');
+const { setStorageAdapter, resetStorageAdapter } = require('../services/storage');
+const { createMockStorage } = require('./helpers/mockStorage');
 
 const TEST_DB_URI = 'mongodb://127.0.0.1:27017/ricozcontract_security_test';
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 
 let server;
 let baseURL;
+let mockStorage;
 
 const signToken = (user) => jwt.sign(
   { id: user._id.toString(), tokenVersion: user.tokenVersion || 0 },
@@ -91,6 +92,9 @@ const startTestApp = () =>
     app.use((req, res) => res.status(404).json({ message: 'API route not found' }));
     // Mirrors the central handler behaviour used by server.js.
     app.use((error, req, res, next) => {
+      if (error.name === 'MulterError' && error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ message: 'File exceeds the 10 MiB upload limit.' });
+      }
       if (error.name === 'MulterError' || (typeof error.message === 'string' && error.message.includes('Only PDF'))) {
         return res.status(400).json({ message: error.message });
       }
@@ -113,14 +117,22 @@ const startTestApp = () =>
   });
 
 test.before(async () => {
+  mockStorage = createMockStorage();
+  setStorageAdapter(mockStorage.adapter);
   await mongoose.connect(TEST_DB_URI);
   await mongoose.connection.dropDatabase();
   await startTestApp();
   baseURL = `http://127.0.0.1:${server.address().port}`;
 });
 
+test.beforeEach(() => {
+  mockStorage.reset();
+});
+
 test.after(async () => {
   if (server) await new Promise((resolve) => server.close(resolve));
+  resetStorageAdapter();
+  mockStorage.cleanup();
   if (mongoose.connection.readyState) {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
@@ -370,7 +382,6 @@ test('document upload rejects files whose content does not match their extension
   const token = signToken(user);
   const contract = await createContract({ title: 'Upload target', createdBy: user._id, assignedUser: user._id });
 
-  // PNG bytes disguised as a PDF -> magic byte mismatch -> 400.
   const pngAsPdf = await uploadFile(`/api/documents/upload/${contract._id}`, {
     token,
     filename: 'fake.pdf',
@@ -378,40 +389,35 @@ test('document upload rejects files whose content does not match their extension
   });
   assert.equal(pngAsPdf.status, 400);
   assert.match(pngAsPdf.data.message, /content does not match/);
+  assert.equal(mockStorage.client.objects.size, 0);
 
-  // Genuine PDF magic bytes are accepted.
   const pdf = await uploadFile(`/api/documents/upload/${contract._id}`, {
     token,
     filename: 'real.pdf',
-    content: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x0a, 0x25]) // %PDF-1.4\n%
+    content: new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF')
   });
   assert.equal(pdf.status, 201);
 
   const docs = await ContractDocument.find({ contract: contract._id });
   assert.equal(docs.length, 1);
   assert.equal(docs[0].originalname, 'real.pdf');
-
-  // Clean up the file stored for the valid upload.
-  const storedPath = path.join(UPLOAD_DIR, docs[0].filename);
-  if (fs.existsSync(storedPath)) fs.unlinkSync(storedPath);
+  assert.equal(mockStorage.client.objects.size, 1);
 });
 
-test('uploading to an unauthorized contract is rejected before any file is written', async () => {
+test('uploading to an unauthorized contract is rejected before any object is written', async () => {
   const admin = await createUser({ name: 'Owner Admin', email: 'owner.admin@ricoz.test', role: 'Admin' });
   const contract = await createContract({ title: 'Not yours', createdBy: admin._id, assignedUser: admin._id });
 
   const stranger = await createUser({ name: 'Stranger Employee', email: 'stranger@ricoz.test' });
   const strangerToken = signToken(stranger);
 
-  const filesBefore = fs.readdirSync(UPLOAD_DIR).length;
-
+  const objectsBefore = mockStorage.client.objects.size;
   const upload = await uploadFile(`/api/documents/upload/${contract._id}`, {
     token: strangerToken,
     filename: 'sneaky.pdf',
-    content: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34])
+    content: new TextEncoder().encode('%PDF-1.4\n%%EOF')
   });
   assert.equal(upload.status, 403);
-
-  const filesAfter = fs.readdirSync(UPLOAD_DIR).length;
-  assert.equal(filesAfter, filesBefore, 'no orphan file may be left behind');
+  assert.equal(mockStorage.client.objects.size, objectsBefore, 'no orphan object may be left behind');
+  assert.equal(await ContractDocument.countDocuments({ contract: contract._id }), 0);
 });
