@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import API from '../services/api';
 import Toast from '../components/Layout/Common/Toast';
+import { PageSkeleton } from '../components/Layout/Common/Skeleton';
+import EmptyState from '../components/Layout/Common/EmptyState';
+import { ROLES } from '../utils/roles';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
@@ -35,7 +38,7 @@ const UserManagement = () => {
   };
 
   if (loading) {
-    return <div className="p-8 text-slate-500">Loading users...</div>;
+    return <PageSkeleton rows={6} columns={5} />;
   }
 
   return (
@@ -46,42 +49,61 @@ const UserManagement = () => {
         <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">User management</h1>
       </div>
 
-      {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {error && <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm text-slate-600">
-          <thead className="bg-[#f7f7f8] text-xs uppercase tracking-[0.1em] text-slate-500">
-            <tr>
-              <th className="px-4 py-3 font-medium">Name</th>
-              <th className="px-4 py-3 font-medium">Email</th>
-              <th className="px-4 py-3 font-medium">Role</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Department</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {users.map((user) => (
-              <tr key={user._id} className="hover:bg-slate-50/60">
-                <td className="px-4 py-3 font-medium text-slate-800">{user.name}</td>
-                <td className="px-4 py-3">{user.email}</td>
-                <td className="px-4 py-3">
-                  <select value={user.role} onChange={(event) => updateUser(user._id, 'role', event.target.value)} className="rounded-lg border border-slate-200 bg-[#eaf1ff] px-2 py-1 text-xs font-semibold text-[#1d4ed8]">
-                    <option value="Admin">Admin</option>
-                    <option value="Manager">Manager</option>
-                    <option value="Employee">Employee</option>
-                  </select>
-                </td>
-                <td className="px-4 py-3">
-                  <select value={user.status || 'Active'} onChange={(event) => updateUser(user._id, 'status', event.target.value)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold">
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
-                </td>
-                <td className="px-4 py-3">{user.department || 'General'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {users.length === 0 ? (
+          <EmptyState title="No users yet" description="Accounts appear here as people join the workspace." />
+        ) : (
+          /* The table needs its own scroll container: index.css gives tables a
+             40rem floor on a phone, and this parent clips overflow, so without
+             this the Role and Status columns would be unreachable. */
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-[#f7f7f8] text-xs uppercase tracking-[0.1em] text-slate-500">
+                <tr>
+                  <th scope="col" className="px-4 py-3 font-medium">Name</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Email</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Role</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Status</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Department</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {users.map((user) => (
+                  <tr key={user._id} className="hover:bg-slate-50/60">
+                    <td className="px-4 py-3 font-medium text-slate-800">{user.name}</td>
+                    <td className="px-4 py-3">{user.email}</td>
+                    <td className="px-4 py-3">
+                      <select
+                        aria-label={`Role for ${user.name}`}
+                        value={user.role}
+                        onChange={(event) => updateUser(user._id, 'role', event.target.value)}
+                        className="rounded-lg border border-slate-200 bg-[#eaf1ff] px-2 py-1.5 text-xs font-semibold text-[#1d4ed8]"
+                      >
+                        {ROLES.map((role) => (
+                          <option key={role} value={role}>{role}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-3">
+                      <select
+                        aria-label={`Status for ${user.name}`}
+                        value={user.status || 'Active'}
+                        onChange={(event) => updateUser(user._id, 'status', event.target.value)}
+                        className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold"
+                      >
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-3">{user.department || 'General'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

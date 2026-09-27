@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import API from '../services/api';
 import { Activity, Clock3 } from 'lucide-react';
+import { PageSkeleton, SkeletonRows } from '../components/Layout/Common/Skeleton';
+import EmptyState from '../components/Layout/Common/EmptyState';
 
 const ActivityLog = () => {
   const [activities, setActivities] = useState([]);
@@ -22,21 +24,39 @@ const ActivityLog = () => {
     fetchActivities();
   }, []);
 
-  if (loading) return <div className="p-8 text-slate-500">Loading activity history...</div>;
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div className="space-y-3" role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only">Loading activity history…</span>
+          <div aria-hidden="true" className="ricoz-skeleton h-3 w-32 rounded-lg" />
+          <div aria-hidden="true" className="ricoz-skeleton h-9 w-56 max-w-full rounded-lg" />
+          <div aria-hidden="true" className="ricoz-skeleton h-3 w-full max-w-xl rounded-lg" />
+        </div>
+        <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm px-4">
+          <SkeletonRows rows={6} columns={2} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
       <div>
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Governance</p>
-        <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">Activity log</h1>
+        <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Activity log</h1>
         <p className="mt-1 text-sm text-slate-500">Recent contract and lifecycle actions across the workspace.</p>
       </div>
 
-      {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {error && <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
         {activities.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">No activity recorded yet.</div>
+          <EmptyState
+            icon={Activity}
+            title="No activity recorded yet"
+            description="Contract and lifecycle actions across the workspace are logged here as they happen."
+          />
         ) : (
           <div className="divide-y divide-slate-100">
             {activities.map((entry) => (

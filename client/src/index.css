@@ -4,17 +4,74 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ------------------------------------------------------------------ *
+ * Design tokens
+ *
+ * Both themes are declared here as custom properties so the unlayered
+ * overrides at the bottom of this file can read one set of names. The
+ * overrides are deliberately unlayered: every Tailwind utility lives in
+ * the `utilities` cascade layer, and an unlayered rule outranks a
+ * layered one regardless of specificity. That is what lets the app
+ * re-theme markup that hard-codes `bg-white` / `text-slate-800`
+ * arbitrary values without rewriting 19 page files.
+ * ------------------------------------------------------------------ */
+:root {
+	--rz-page: #f3f5f8;
+	--rz-surface: #ffffff;
+	--rz-surface-2: #f8fafc;
+	--rz-surface-3: #f7f7f8;
+	--rz-border: #e2e8f0;
+	--rz-border-soft: #eef1f5;
+	--rz-text: #0f172a;
+	--rz-text-strong: #0f1d3a;
+	--rz-text-body: #334155;
+	--rz-text-muted: #64748b;
+	--rz-text-faint: #94a3b8;
+	--rz-sidebar: #f5f6f8;
+	--rz-shadow: 0 8px 24px rgba(15, 29, 58, 0.05);
+	--rz-shadow-strong: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
+
+.dark {
+	--rz-page: #0b1220;
+	--rz-surface: #141c2e;
+	--rz-surface-2: #1a2436;
+	--rz-surface-3: #1e293b;
+	--rz-border: #2b3852;
+	--rz-border-soft: #243048;
+	--rz-text: #e8eefb;
+	--rz-text-strong: #f1f5f9;
+	--rz-text-body: #cbd5e1;
+	--rz-text-muted: #94a3b8;
+	--rz-text-faint: #7c8ba3;
+	--rz-sidebar: #101827;
+	--rz-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+	--rz-shadow-strong: 0 18px 45px rgba(0, 0, 0, 0.45);
+}
+
 @layer base {
 	html {
-		background: #f3f5f8;
+		background: var(--rz-page);
+		/* Anchor links (landing page sections) glide instead of jumping. */
+		scroll-behavior: smooth;
+		/* Anchor targets clear the sticky landing header. */
+		scroll-padding-top: 5rem;
+		-webkit-text-size-adjust: 100%;
 	}
 
 	body {
 		margin: 0;
-		background: #f3f5f8;
-		color: #0f172a;
+		background: var(--rz-page);
+		color: var(--rz-text);
 		font-family: Lato, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 		-webkit-font-smoothing: antialiased;
+		/*
+		 * `clip` (not `hidden`) is the safety net against a stray wide child
+		 * creating a horizontal scrollbar. Unlike `hidden` it does not turn
+		 * the body into a scroll container, so `position: sticky` keeps
+		 * working on the topbar and landing header.
+		 */
+		overflow-x: clip;
 	}
 
 	*, *::before, *::after {
@@ -52,25 +109,135 @@
 	a {
 		font-family: Lato, ui-sans-serif, system-ui, sans-serif;
 	}
+
+	/* A visible focus ring everywhere, for keyboard users on any surface. */
+	:focus-visible {
+		outline: 2px solid #d51d29;
+		outline-offset: 2px;
+	}
+
+	/* Stop iOS Safari zooming when a focused field is under 16px. */
+	@media (max-width: 640px) {
+		input,
+		select,
+		textarea {
+			font-size: 16px;
+		}
+	}
 }
 
 @layer components {
 	.ricoz-panel {
-		border: 1px solid #e2e8f0;
+		border: 1px solid var(--rz-border);
 		border-radius: 24px;
-		background: #ffffff;
-		box-shadow: 0 18px 45px rgba(15, 23, 42, 0.05);
+		background: var(--rz-surface);
+		box-shadow: var(--rz-shadow-strong);
+	}
+
+	/* Visible only to screen readers, until focused. */
+	.ricoz-skip-link {
+		position: absolute;
+		left: 0.5rem;
+		top: -100vh;
+		z-index: 100;
+		border-radius: 0.75rem;
+		background: #d51d29;
+		padding: 0.6rem 1rem;
+		font-size: 0.875rem;
+		font-weight: 700;
+		color: #ffffff;
+		transition: top 150ms ease;
+	}
+
+	.ricoz-skip-link:focus {
+		top: 0.5rem;
 	}
 }
 
+/* ------------------------------------------------------------------ *
+ * Motion
+ * ------------------------------------------------------------------ */
+@keyframes ricoz-rise {
+	from { opacity: 0; transform: translateY(14px); }
+	to { opacity: 1; transform: none; }
+}
+
+@keyframes ricoz-fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@keyframes ricoz-skeleton {
+	from { background-position: 200% 0; }
+	to { background-position: -200% 0; }
+}
+
+@keyframes ricoz-spin {
+	to { transform: rotate(360deg); }
+}
+
+.ricoz-rise {
+	animation: ricoz-rise 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ricoz-fade {
+	animation: ricoz-fade 400ms ease both;
+}
+
+.ricoz-skeleton {
+	background-image: linear-gradient(
+		90deg,
+		var(--rz-surface-2) 0%,
+		var(--rz-surface-3) 40%,
+		var(--rz-surface-2) 80%
+	);
+	background-size: 200% 100%;
+	animation: ricoz-skeleton 1.4s ease-in-out infinite;
+}
+
+.ricoz-spin {
+	animation: ricoz-spin 800ms linear infinite;
+}
+
+/* Honour the OS "reduce motion" setting: no decorative movement at all. */
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+
+	.ricoz-rise,
+	.ricoz-fade {
+		animation: none;
+	}
+
+	.ricoz-skeleton {
+		animation-duration: 0s;
+		background-image: none;
+		background-color: var(--rz-surface-2);
+	}
+
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * Mobile
+ * ------------------------------------------------------------------ */
 @media (max-width: 767px) {
 	.ricoz-shell main .bg-white {
 		border-radius: 14px;
 		box-shadow: 0 6px 18px rgba(15, 29, 58, 0.05);
 	}
 
+	/* Wide data tables scroll inside their own container rather than
+	   pushing the whole page sideways. */
 	.ricoz-shell main table {
-		min-width: 42rem;
+		min-width: 40rem;
 	}
 
 	.ricoz-shell main .overflow-x-auto {
@@ -119,4 +286,197 @@
 
 .ricoz-shell main table thead {
 	background: #f7f8fa;
+}
+
+/* ------------------------------------------------------------------ *
+ * Dark theme
+ *
+ * Scoped to the same `.ricoz-shell main` surface as the light overrides
+ * above, so the theme reaches every authenticated page at once. Slightly
+ * higher specificity than the light rules above, so both can coexist and
+ * only one of them is ever active.
+ * ------------------------------------------------------------------ */
+.dark .ricoz-shell {
+	background-color: var(--rz-page);
+	color: var(--rz-text);
+}
+
+.dark .ricoz-shell main .bg-white {
+	background-color: var(--rz-surface);
+	border-color: var(--rz-border);
+	box-shadow: var(--rz-shadow);
+}
+
+.dark .ricoz-shell main [class*='bg-[#f8fafc]'],
+.dark .ricoz-shell main .bg-slate-50 {
+	background-color: var(--rz-surface-2);
+}
+
+.dark .ricoz-shell main [class*='bg-[#f7f7f8]'],
+.dark .ricoz-shell main .bg-slate-100 {
+	background-color: var(--rz-surface-3);
+}
+
+.dark .ricoz-shell main [class*='bg-[#eaf1ff]'] {
+	background-color: rgba(29, 78, 216, 0.18);
+}
+
+.dark .ricoz-shell main [class*='hover:bg-[#f8fafc]']:hover,
+.dark .ricoz-shell main [class*='hover:bg-slate-50']:hover,
+.dark .ricoz-shell main .hover\:bg-slate-50\/60:hover {
+	background-color: var(--rz-surface-2);
+}
+
+.dark .ricoz-shell main [class*='border-slate-100'],
+.dark .ricoz-shell main [class*='border-slate-200'],
+.dark .ricoz-shell main [class*='border-slate-300'] {
+	border-color: var(--rz-border);
+}
+
+.dark .ricoz-shell main .divide-slate-100 > * {
+	border-color: var(--rz-border-soft);
+}
+
+.dark .ricoz-shell main [class*='border-b-slate-100'] {
+	border-color: var(--rz-border-soft);
+}
+
+.dark .ricoz-shell main [class*='border-t-slate-100'] {
+	border-color: var(--rz-border-soft);
+}
+
+.dark .ricoz-shell main .border {
+	border-color: var(--rz-border);
+}
+
+.dark .ricoz-shell main .text-slate-900,
+.dark .ricoz-shell main .text-slate-800,
+.dark .ricoz-shell main [class*='text-[#0f172a]'],
+.dark .ricoz-shell main [class*='text-[#0f1d3a]'] {
+	color: var(--rz-text-strong);
+}
+
+.dark .ricoz-shell main .text-slate-700,
+.dark .ricoz-shell main .text-slate-600 {
+	color: var(--rz-text-body);
+}
+
+.dark .ricoz-shell main .text-slate-500,
+.dark .ricoz-shell main [class*='text-[#475569]'],
+.dark .ricoz-shell main [class*='text-[#64748b]'] {
+	color: var(--rz-text-muted);
+}
+
+.dark .ricoz-shell main .text-slate-400 {
+	color: var(--rz-text-faint);
+}
+
+.dark .ricoz-shell main [class*='text-[#1d4ed8]'] {
+	color: #93b4fd;
+}
+
+.dark .ricoz-shell main [class*='text-[#d51d29]'] {
+	color: #ff8a90;
+}
+
+.dark .ricoz-shell main input:not([type='file']),
+.dark .ricoz-shell main select,
+.dark .ricoz-shell main textarea {
+	background-color: var(--rz-surface-2);
+	border-color: var(--rz-border);
+	color: var(--rz-text-strong);
+}
+
+.dark .ricoz-shell main input::placeholder,
+.dark .ricoz-shell main textarea::placeholder {
+	color: var(--rz-text-faint);
+}
+
+.dark .ricoz-shell main [class*='focus:ring-red-100']:focus {
+	--tw-ring-color: rgba(213, 29, 41, 0.25);
+}
+
+.dark .ricoz-shell main table thead {
+	background: var(--rz-surface-3);
+	color: var(--rz-text-muted);
+}
+
+.dark .ricoz-shell main table tbody tr:hover {
+	background-color: var(--rz-surface-2);
+}
+
+.dark .ricoz-shell main [class*='bg-red-50'],
+.dark .ricoz-shell main [class*='bg-red-100\/'] {
+	background-color: rgba(190, 18, 60, 0.14);
+}
+
+.dark .ricoz-shell main [class*='text-red-700'],
+.dark .ricoz-shell main [class*='text-red-600'] {
+	color: #fda4af;
+}
+
+.dark .ricoz-shell main [class*='border-red-200'],
+.dark .ricoz-shell main [class*='border-red-100'] {
+	border-color: rgba(244, 63, 94, 0.35);
+}
+
+/* Status pills and coloured action chips: lift the background and keep the
+   foreground bright enough to clear 4.5:1 on the dark surface. */
+.dark .ricoz-shell main .bg-amber-100,
+.dark .ricoz-shell main [class*='bg-[#fff3e8]'] {
+	background-color: rgba(245, 158, 11, 0.18);
+}
+
+.dark .ricoz-shell main .text-amber-700,
+.dark .ricoz-shell main [class*='text-[#b45309]'] {
+	color: #fcd34d;
+}
+
+.dark .ricoz-shell main .bg-blue-100,
+.dark .ricoz-shell main .bg-blue-50 {
+	background-color: rgba(59, 130, 246, 0.18);
+}
+
+.dark .ricoz-shell main .text-blue-700 {
+	color: #93c5fd;
+}
+
+.dark .ricoz-shell main .bg-emerald-100,
+.dark .ricoz-shell main .bg-emerald-50 {
+	background-color: rgba(16, 185, 129, 0.16);
+}
+
+.dark .ricoz-shell main .text-emerald-700,
+.dark .ricoz-shell main .text-emerald-600 {
+	color: #6ee7b7;
+}
+
+.dark .ricoz-shell main .bg-red-100 {
+	background-color: rgba(244, 63, 94, 0.18);
+}
+
+.dark .ricoz-shell main .text-red-700 {
+	color: #fda4af;
+}
+
+.dark .ricoz-shell main .bg-slate-200 {
+	background-color: var(--rz-surface-3);
+}
+
+.dark .ricoz-shell main .bg-slate-100,
+.dark .ricoz-shell main [class*='disabled:bg-slate-50'] {
+	background-color: var(--rz-surface-3);
+}
+
+.dark .ricoz-shell main [class*='border-emerald-200'] {
+	border-color: rgba(16, 185, 129, 0.4);
+}
+
+.dark .ricoz-shell main [class*='border-red-200'] {
+	border-color: rgba(244, 63, 94, 0.4);
+}
+
+.dark .ricoz-shell main [class*='border-amber-200'],
+.dark .ricoz-shell main [class*='border-blue-200'] {
+	border-color: var(--rz-border);
 }

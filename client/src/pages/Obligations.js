@@ -6,6 +6,9 @@ import Modal from '../components/Layout/Common/Modal';
 import Toast from '../components/Layout/Common/Toast';
 import { formatDate, toDateInput, daysUntil, daysLabel } from '../utils/date';
 import { canTransitionItem, statusOptionsFor } from '../utils/itemTransitions';
+import { PageSkeleton } from '../components/Layout/Common/Skeleton';
+import EmptyState from '../components/Layout/Common/EmptyState';
+import { ClipboardCheck } from 'lucide-react';
 
 const statusStyles = {
   Pending: 'bg-amber-100 text-amber-700',
@@ -89,6 +92,7 @@ const Obligations = () => {
 
   const createObligation = async (event) => {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError('');
     try {
@@ -105,6 +109,7 @@ const Obligations = () => {
 
   const saveEdit = async (event) => {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError('');
     try {
@@ -158,47 +163,57 @@ const Obligations = () => {
   };
 
   if (loading) {
-    return <div className="p-8 text-slate-500">Loading obligations...</div>;
+    return <PageSkeleton rows={6} columns={6} />;
   }
 
   return (
     <div className="space-y-8">
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Compliance workspace</p>
-          <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">Obligations</h1>
+          <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Obligations</h1>
           <p className="mt-2 text-slate-500">Track every promise, owner, and deadline before it becomes a risk.</p>
         </div>
         {canManage ? (
-          <button onClick={openCreate} className="rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white">New obligation</button>
+          <button onClick={openCreate} className="shrink-0 self-start rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white sm:self-auto">New obligation</button>
         ) : (
-          <div className="hidden h-12 w-12 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8] sm:flex"><ShieldCheck className="h-6 w-6" /></div>
+          <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8] sm:flex"><ShieldCheck className="h-6 w-6" /></div>
         )}
       </div>
 
       {error && (
-        <div className="flex items-center justify-between rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div role="alert" className="flex items-center justify-between gap-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{error}</span>
-          <button onClick={fetchObligations} className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100">Retry</button>
+          <button onClick={fetchObligations} className="shrink-0 rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100">Retry</button>
         </div>
       )}
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
         {obligations.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">
-            {canManage ? 'No obligations yet. Create one to start tracking commitments.' : 'No obligations assigned to you.'}
-          </div>
+          <EmptyState
+            icon={ClipboardCheck}
+            title={canManage ? 'No obligations yet' : 'No obligations assigned to you'}
+            description={
+              canManage
+                ? 'Create an obligation to start tracking commitments, owners, and deadlines.'
+                : 'Obligations assigned to you will appear here.'
+            }
+            action={canManage ? <button onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-[#d51d29] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#b91c26]">New obligation</button> : undefined}
+          />
         ) : (
+          /* Own scroll container: the table needs 40rem on a phone and this
+             parent clips overflow, so Due Date / Status / Actions would be cut. */
+          <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600">
             <thead className="bg-[#f7f7f8] text-xs uppercase tracking-[0.1em] text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-medium">Contract</th>
-                <th className="px-4 py-3 font-medium">Title</th>
-                <th className="px-4 py-3 font-medium">Assigned To</th>
-                <th className="px-4 py-3 font-medium">Due Date</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Actions</th>
+                <th scope="col" className="px-4 py-3 font-medium">Contract</th>
+                <th scope="col" className="px-4 py-3 font-medium">Title</th>
+                <th scope="col" className="px-4 py-3 font-medium">Assigned To</th>
+                <th scope="col" className="px-4 py-3 font-medium">Due Date</th>
+                <th scope="col" className="px-4 py-3 font-medium">Status</th>
+                <th scope="col" className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -206,31 +221,33 @@ const Obligations = () => {
                 const days = daysUntil(ob.dueDate);
                 return (
                   <tr key={ob._id} className="transition hover:bg-[#f8fafc]">
-                    <td className="px-4 py-3 font-medium text-slate-800">{ob.contract?.contractNumber || 'N/A'}</td>
+                    <td className="px-4 py-3 font-mono text-xs font-medium text-slate-800">{ob.contract?.contractNumber || 'N/A'}</td>
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-800">{ob.title}</div>
                       <div className="text-xs text-slate-500">{ob.description || ob.contract?.title || ''}</div>
                     </td>
-                    <td className="px-4 py-3">{ob.assignedTo?.name || 'Unassigned'}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap">{ob.assignedTo?.name || 'Unassigned'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <div>{formatDate(ob.dueDate)}</div>
                       {ob.status !== 'Completed' && <div className="text-xs text-slate-400">{daysLabel(days)}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[ob.status] || 'bg-slate-100 text-slate-700'}`}>
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[ob.status] || 'bg-slate-100 text-slate-700'}`}>
                         {ob.status}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2">
                         <button
+                          type="button"
                           onClick={() => setViewTarget(ob)}
+                          aria-label={`View ${ob.title}`}
                           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                         >
                           <Eye className="h-3.5 w-3.5" /> View
                         </button>
                         {canManage && (
-                          <button onClick={() => openEdit(ob)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                          <button type="button" onClick={() => openEdit(ob)} aria-label={`Edit ${ob.title}`} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                             Edit
                           </button>
                         )}
@@ -242,6 +259,7 @@ const Obligations = () => {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -251,8 +269,8 @@ const Obligations = () => {
         title="Create obligation"
         footer={
           <>
-            <button onClick={() => setCreateOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
-            <button form="obligation-form" disabled={saving} className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            <button type="button" onClick={() => setCreateOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
+            <button type="submit" form="obligation-form" disabled={saving} className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
               {saving ? 'Saving...' : 'Save'}
             </button>
           </>
@@ -279,8 +297,8 @@ const Obligations = () => {
         title={editTarget ? `Edit · ${editTarget.title}` : 'Edit obligation'}
         footer={
           <>
-            <button onClick={() => setEditTarget(null)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
-            <button form="obligation-edit-form" disabled={saving} className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            <button type="button" onClick={() => setEditTarget(null)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
+            <button type="submit" form="obligation-edit-form" disabled={saving} className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
               {saving ? 'Saving...' : 'Save changes'}
             </button>
           </>

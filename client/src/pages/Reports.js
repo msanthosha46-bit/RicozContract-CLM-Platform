@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import API from '../services/api';
+import { PageSkeleton } from '../components/Layout/Common/Skeleton';
+import EmptyState from '../components/Layout/Common/EmptyState';
 
 const Reports = () => {
   const [summary, setSummary] = useState(null);
@@ -22,72 +24,97 @@ const Reports = () => {
   }, []);
 
   if (loading) {
-    return <div className="p-8 text-slate-500">Loading reports...</div>;
+    return <PageSkeleton cards={6} rows={4} columns={3} />;
   }
 
   const metrics = summary?.metrics || {};
+  const statusBreakdown = summary?.statusBreakdown || [];
+  const typeBreakdown = summary?.typeBreakdown || [];
+  // With nothing in the repository every metric is 0 and both breakdowns are
+  // empty, so a full-width empty state explains the page better than six
+  // zeroes.
+  const isEmpty = statusBreakdown.length === 0 && typeBreakdown.length === 0;
 
   return (
     <div className="space-y-8">
       <div>
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Insights</p>
-        <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">Reports & analytics</h1>
+        <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Reports &amp; analytics</h1>
       </div>
 
-      {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {error && <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:border dark:border-red-200 dark:bg-transparent">{error}</div>}
 
-      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm text-slate-500">Total Contracts</div>
-          <div className="mt-2 text-3xl font-bold text-slate-800">{metrics.total || 0}</div>
+      {isEmpty ? (
+        <div className="rounded-[26px] border border-slate-200 bg-white shadow-sm">
+          <EmptyState
+            title="No analytics yet"
+            description="Reports are generated from the contracts in your repository. Add or approve contracts and the figures will appear here."
+          />
         </div>
-        <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm text-slate-500">Active Contracts</div>
-          <div className="mt-2 text-3xl font-bold text-emerald-600">{metrics.active || 0}</div>
-        </div>
-        <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm text-slate-500">Pending Approvals</div>
-          <div className="mt-2 text-3xl font-bold text-amber-600">{metrics.pending || 0}</div>
-        </div>
-        <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm text-slate-500">Expiring Soon</div>
-          <div className="mt-2 text-3xl font-bold text-orange-600">{metrics.expiringSoon || 0}</div>
-        </div>
-        <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm text-slate-500">Overdue Items</div>
-          <div className="mt-2 text-3xl font-bold text-red-600">{(metrics.overdueObligations || 0) + (metrics.overdueMilestones || 0)}</div>
-        </div>
-        <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm text-slate-500">Renewals</div>
-          <div className="mt-2 text-3xl font-bold text-blue-600">{metrics.renewals || 0}</div>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-bold text-slate-800">Status Breakdown</h2>
-          <div className="space-y-3">
-            {(summary?.statusBreakdown || []).map((item) => (
-              <div key={item._id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-                <span className="text-sm font-medium text-slate-700">{item._id}</span>
-                <span className="text-sm font-bold text-slate-900">{item.count}</span>
-              </div>
-            ))}
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm text-slate-500">Total Contracts</div>
+              <div className="mt-2 text-3xl font-bold tabular-nums text-slate-800">{metrics.total || 0}</div>
+            </div>
+            <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm text-slate-500">Active Contracts</div>
+              <div className="mt-2 text-3xl font-bold tabular-nums text-emerald-600">{metrics.active || 0}</div>
+            </div>
+            <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm text-slate-500">Pending Approvals</div>
+              <div className="mt-2 text-3xl font-bold tabular-nums text-amber-600">{metrics.pending || 0}</div>
+            </div>
+            <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm text-slate-500">Expiring Soon</div>
+              <div className="mt-2 text-3xl font-bold tabular-nums text-orange-600">{metrics.expiringSoon || 0}</div>
+            </div>
+            <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm text-slate-500">Overdue Items</div>
+              <div className="mt-2 text-3xl font-bold tabular-nums text-red-600">{(metrics.overdueObligations || 0) + (metrics.overdueMilestones || 0)}</div>
+            </div>
+            <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm text-slate-500">Renewals</div>
+              <div className="mt-2 text-3xl font-bold tabular-nums text-blue-600">{metrics.renewals || 0}</div>
+            </div>
           </div>
-        </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-bold text-slate-800">Type Breakdown</h2>
-          <div className="space-y-3">
-            {(summary?.typeBreakdown || []).map((item) => (
-              <div key={item._id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-                <span className="text-sm font-medium text-slate-700">{item._id}</span>
-                <span className="text-sm font-bold text-slate-900">{item.count}</span>
-              </div>
-            ))}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="mb-4 text-lg font-bold text-slate-800">Status Breakdown</h2>
+              {statusBreakdown.length === 0 ? (
+                <EmptyState compact title="No status breakdown" description="Contracts grouped by lifecycle status will appear here." />
+              ) : (
+                <div className="space-y-3">
+                  {statusBreakdown.map((item) => (
+                    <div key={item._id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                      <span className="min-w-0 truncate text-sm font-medium text-slate-700">{item._id}</span>
+                      <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900">{item.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="mb-4 text-lg font-bold text-slate-800">Type Breakdown</h2>
+              {typeBreakdown.length === 0 ? (
+                <EmptyState compact title="No type breakdown" description="Contracts grouped by agreement type will appear here." />
+              ) : (
+                <div className="space-y-3">
+                  {typeBreakdown.map((item) => (
+                    <div key={item._id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                      <span className="min-w-0 truncate text-sm font-medium text-slate-700">{item._id}</span>
+                      <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900">{item.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 };

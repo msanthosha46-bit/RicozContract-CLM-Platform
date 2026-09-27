@@ -13,6 +13,8 @@ import {
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AuthContext } from '../context/AuthContext';
+import { PageSkeleton, SkeletonRows } from '../components/Layout/Common/Skeleton';
+import EmptyState from '../components/Layout/Common/EmptyState';
 
 const currencyLocale = (currency) => (currency === 'INR' ? 'en-IN' : 'en-US');
 
@@ -60,7 +62,21 @@ const Dashboard = () => {
     fetchDashboardData();
   }, []);
 
-  if (loading) return <div className="p-8 text-slate-500">Loading Dashboard...</div>;
+  if (loading) {
+    return (
+      <div className="space-y-7">
+        <PageSkeleton cards={4} />
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,2.2fr)_minmax(280px,1fr)]">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <SkeletonRows rows={5} />
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <SkeletonRows rows={3} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const totalValue = totalLines(valueByCurrency);
   const activeValue = activeLines(valueByCurrency);
@@ -106,7 +122,7 @@ const Dashboard = () => {
               <div className="flex items-start justify-between"><span className="text-sm font-semibold text-slate-500">{label}</span><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50"><Icon className={`h-5 w-5 ${iconColor}`} /></span></div>
               <div className="mt-6 space-y-1">
                 {value.map((line, index) => (
-                  <div key={index} className={`${isCount ? 'text-4xl' : 'text-2xl'} font-black tracking-[-0.06em] text-[#0f1d3a]`}>{line}</div>
+                  <div key={index} className={`${isCount ? 'text-3xl sm:text-4xl' : 'text-xl sm:text-2xl'} break-words font-black tabular-nums tracking-[-0.06em] text-[#0f1d3a]`}>{line}</div>
                 ))}
               </div>
               <p className="mt-1 text-sm text-slate-500">{detail}</p>
@@ -121,7 +137,7 @@ const Dashboard = () => {
           <p className="mt-1 text-sm text-slate-500">Counts from your current contract repository</p>
           <div className="mt-6 h-64">
             {chartData.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-slate-500">No contract data yet.</div>
+              <EmptyState title="No contract data yet" description="Once contracts are added, their status spread appears here." compact />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
@@ -166,7 +182,14 @@ const Dashboard = () => {
                 <span className="font-bold text-[#0f1d3a]">{formatCurrency(contract.amount, contract.currency)}</span>
               </div>
             ))}
-            {recentContracts.length === 0 && <div className="text-sm text-slate-500">No contracts yet.</div>}
+            {recentContracts.length === 0 && (
+              <EmptyState
+                compact
+                title="No contracts yet"
+                description="Contracts you add or approve will show up here."
+                action={<Link to="/contracts/create" className="inline-flex items-center gap-2 rounded-xl bg-[#d51d29] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#b91c26]"><Plus className="h-4 w-4" /> New contract</Link>}
+              />
+            )}
           </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -187,7 +210,14 @@ const Dashboard = () => {
                 <StatusBadge status={contract.status} />
               </div>
             ))}
-            {recentContracts.length === 0 && <div className="text-sm text-slate-500">No contracts yet.</div>}
+            {recentContracts.length === 0 && (
+              <EmptyState
+                compact
+                title="Nothing in motion"
+                description="Agreements awaiting review or approval appear here."
+                action={<Link to="/contracts" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-[#d51d29] hover:text-[#d51d29]">Browse contracts</Link>}
+              />
+            )}
           </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

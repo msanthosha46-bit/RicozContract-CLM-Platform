@@ -6,6 +6,8 @@ import Modal from '../components/Layout/Common/Modal';
 import Toast from '../components/Layout/Common/Toast';
 import { formatDate, toDateInput, daysUntil, daysLabel } from '../utils/date';
 import { canTransitionItem, statusOptionsFor } from '../utils/itemTransitions';
+import { PageSkeleton } from '../components/Layout/Common/Skeleton';
+import EmptyState from '../components/Layout/Common/EmptyState';
 
 const statusStyles = {
   Pending: 'bg-amber-100 text-amber-700',
@@ -90,6 +92,7 @@ const Milestones = () => {
 
   const createMilestone = async (event) => {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError('');
     try {
@@ -106,6 +109,7 @@ const Milestones = () => {
 
   const saveEdit = async (event) => {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError('');
     try {
@@ -165,27 +169,27 @@ const Milestones = () => {
   const pending = milestones.filter((m) => m.status === 'Pending').length;
   const percent = total ? Math.round((completed / total) * 100) : 0;
 
-  if (loading) return <div className="p-8 text-slate-500">Loading milestones...</div>;
+  if (loading) return <PageSkeleton rows={6} columns={6} />;
 
   return (
     <div className="space-y-8">
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8]"><Flag className="h-6 w-6" /></div>
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8]"><Flag className="h-6 w-6" /></div>
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Contract lifecycle</p>
-            <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">Milestones</h1>
+            <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Milestones</h1>
             <p className="mt-2 text-slate-500">Give each agreement a visible path from kickoff to completion.</p>
           </div>
         </div>
-        {canManage && <button onClick={openCreate} className="rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white">New milestone</button>}
+        {canManage && <button onClick={openCreate} className="shrink-0 self-start rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white">New milestone</button>}
       </div>
 
       {error && (
-        <div className="flex items-center justify-between rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div role="alert" className="flex items-center justify-between gap-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{error}</span>
-          <button onClick={fetchMilestones} className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100">Retry</button>
+          <button onClick={fetchMilestones} className="shrink-0 rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100">Retry</button>
         </div>
       )}
 
@@ -213,19 +217,29 @@ const Milestones = () => {
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
         {milestones.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">
-            {canManage ? 'No milestones yet. Create one to map out your contract timelines.' : 'No milestones assigned to you.'}
-          </div>
+          <EmptyState
+            icon={Flag}
+            title={canManage ? 'No milestones yet' : 'No milestones assigned to you'}
+            description={
+              canManage
+                ? 'Create a milestone to map out contract timelines from kickoff to completion.'
+                : 'Milestones assigned to you will appear here.'
+            }
+            action={canManage ? <button onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-[#d51d29] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#b91c26]">New milestone</button> : undefined}
+          />
         ) : (
+          /* Own scroll container: the table needs 40rem on a phone and this
+             parent clips overflow, so Due Date / Status / Actions would be cut. */
+          <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600">
             <thead className="bg-[#f7f7f8] text-xs uppercase tracking-[0.1em] text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-medium">Contract</th>
-                <th className="px-4 py-3 font-medium">Milestone</th>
-                <th className="px-4 py-3 font-medium">Assigned To</th>
-                <th className="px-4 py-3 font-medium">Due Date</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Actions</th>
+                <th scope="col" className="px-4 py-3 font-medium">Contract</th>
+                <th scope="col" className="px-4 py-3 font-medium">Milestone</th>
+                <th scope="col" className="px-4 py-3 font-medium">Assigned To</th>
+                <th scope="col" className="px-4 py-3 font-medium">Due Date</th>
+                <th scope="col" className="px-4 py-3 font-medium">Status</th>
+                <th scope="col" className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -233,31 +247,33 @@ const Milestones = () => {
                 const days = daysUntil(milestone.dueDate);
                 return (
                   <tr key={milestone._id} className="transition hover:bg-[#f8fafc]">
-                    <td className="px-4 py-3 font-medium text-slate-800">{milestone.contract?.contractNumber || 'N/A'}</td>
+                    <td className="px-4 py-3 font-mono text-xs font-medium text-slate-800">{milestone.contract?.contractNumber || 'N/A'}</td>
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-800">{milestone.title}</div>
                       <div className="text-xs text-slate-500">{milestone.description || milestone.contract?.title || ''}</div>
                     </td>
-                    <td className="px-4 py-3">{milestone.assignedTo?.name || 'Unassigned'}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap">{milestone.assignedTo?.name || 'Unassigned'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <div>{formatDate(milestone.dueDate)}</div>
                       {milestone.status !== 'Completed' && <div className="text-xs text-slate-400">{daysLabel(days)}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[milestone.status] || 'bg-slate-100 text-slate-700'}`}>
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[milestone.status] || 'bg-slate-100 text-slate-700'}`}>
                         {milestone.status}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2">
                         <button
+                          type="button"
                           onClick={() => setViewTarget(milestone)}
+                          aria-label={`View ${milestone.title}`}
                           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                         >
                           <Eye className="h-3.5 w-3.5" /> View
                         </button>
                         {canManage && (
-                          <button onClick={() => openEdit(milestone)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                          <button type="button" onClick={() => openEdit(milestone)} aria-label={`Edit ${milestone.title}`} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                             Edit
                           </button>
                         )}
@@ -269,6 +285,7 @@ const Milestones = () => {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -278,8 +295,8 @@ const Milestones = () => {
         title="Create milestone"
         footer={
           <>
-            <button onClick={() => setCreateOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
-            <button form="milestone-form" disabled={saving} className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            <button type="button" onClick={() => setCreateOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
+            <button type="submit" form="milestone-form" disabled={saving} className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
               {saving ? 'Saving...' : 'Save'}
             </button>
           </>

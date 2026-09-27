@@ -30,8 +30,17 @@ const GoogleSignInButton = ({ onCredential, onError, disabled = false }) => {
   useEffect(() => {
     if (!clientId || !buttonRef.current) return undefined;
 
+    // The button only knows it is inside a dark document, so read the class the
+    // theme provider toggles on <html>. A filled_black button keeps a readable
+    // contrast on the dark auth panel, where the default outline does not.
+    const isDark = () => document.documentElement.classList.contains('dark');
+
     const renderButton = () => {
       if (!window.google?.accounts?.id || !buttonRef.current) return;
+      // Clamp to the container so the 360px default iframe cannot force a
+      // horizontal scrollbar on a narrow phone.
+      const available = buttonRef.current.clientWidth;
+      const width = Math.max(180, Math.min(360, available || 360));
       window.google.accounts.id.initialize({
         client_id: clientId,
         callback: async (response) => {
@@ -51,16 +60,36 @@ const GoogleSignInButton = ({ onCredential, onError, disabled = false }) => {
       });
       buttonRef.current.replaceChildren();
       window.google.accounts.id.renderButton(buttonRef.current, {
-        type: 'standard', theme: 'outline', size: 'large', width: 360, text: 'continue_with'
+        type: 'standard',
+        theme: isDark() ? 'filled_black' : 'outline',
+        size: 'large',
+        width,
+        text: 'continue_with'
       });
       setReady(true);
     };
+
+    // Re-render on resize so the clamped width tracks the viewport, and on a
+    // theme switch so the button palette follows the rest of the auth screen.
+    let resizeTimer;
+    const onResize = () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(renderButton, 150);
+    };
+    const themeObserver = new MutationObserver(renderButton);
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
     const existing = document.querySelector('script[data-google-identity]');
     if (existing) {
       existing.addEventListener('load', renderButton);
       renderButton();
-      return () => existing.removeEventListener('load', renderButton);
+      window.addEventListener('resize', onResize);
+      return () => {
+        existing.removeEventListener('load', renderButton);
+        window.removeEventListener('resize', onResize);
+        window.clearTimeout(resizeTimer);
+        themeObserver.disconnect();
+      };
     }
 
     const script = document.createElement('script');
@@ -70,7 +99,13 @@ const GoogleSignInButton = ({ onCredential, onError, disabled = false }) => {
     script.dataset.googleIdentity = 'true';
     script.addEventListener('load', renderButton);
     document.head.appendChild(script);
-    return () => script.removeEventListener('load', renderButton);
+    window.addEventListener('resize', onResize);
+    return () => {
+      script.removeEventListener('load', renderButton);
+      window.removeEventListener('resize', onResize);
+      window.clearTimeout(resizeTimer);
+      themeObserver.disconnect();
+    };
   }, [clientId]);
 
   if (!clientId) {
@@ -79,7 +114,7 @@ const GoogleSignInButton = ({ onCredential, onError, disabled = false }) => {
         type="button"
         disabled={disabled}
         onClick={() => onError?.(new Error('Google Sign-In is not configured.'))}
-        className="flex w-full items-center justify-center gap-3 rounded-xl border border-[#dfe7f1] bg-white px-4 py-3 text-sm font-semibold text-[#334155] shadow-sm transition hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-70"
+        className="flex w-full items-center justify-center gap-3 rounded-xl border border-[#dfe7f1] bg-white px-4 py-3 text-sm font-semibold text-[#334155] shadow-sm transition hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-600 dark:bg-[#1a2436] dark:text-slate-200 dark:hover:bg-[#1e293b]"
       >
         <span className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 text-xs font-black text-[#d51d29]">G</span>
         Continue with Google
@@ -87,7 +122,9 @@ const GoogleSignInButton = ({ onCredential, onError, disabled = false }) => {
     );
   }
 
-  return <div className={isDisabled ? 'pointer-events-none opacity-60' : ''} aria-busy={!ready} ref={buttonRef} />;
+  // `justify-center` matters: the button is rendered at a clamped pixel width
+  // rather than `w-full`, so it centres instead of stretching.
+  return <div className={`flex justify-center overflow-hidden ${isDisabled ? 'pointer-events-none opacity-60' : ''}`} aria-busy={!ready} ref={buttonRef} />;
 };
 
 export default GoogleSignInButton;

@@ -41,7 +41,7 @@ const PasswordInput = ({
         aria-pressed={visible}
         title={toggleLabel}
         onClick={() => setVisible((current) => !current)}
-        className="absolute inset-y-0 right-0 flex items-center rounded-r-xl px-3 text-slate-400 outline-none transition hover:text-[#475569] focus:text-[#475569] focus:ring-2 focus:ring-red-100"
+        className="absolute inset-y-0 right-0 flex items-center rounded-r-xl px-3 text-slate-400 outline-none transition hover:text-slate-600 focus:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200"
       >
         {visible ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
       </button>

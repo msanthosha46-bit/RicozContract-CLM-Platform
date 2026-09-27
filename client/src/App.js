@@ -1,6 +1,8 @@
-import React, { useContext, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useContext, useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { ADMIN_ROLES, MANAGER_ROLES } from './utils/roles';
 import Sidebar from './components/Layout/Sidebar';
 import Topbar from './components/Layout/Topbar';
 
@@ -26,15 +28,27 @@ import Profile from './pages/Profile';
 
 const ProtectedLayout = ({ children }) => {
   const { user } = useContext(AuthContext);
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // A tap on a link navigates, but the drawer state lives here, so it has to
+  // be released on the navigation itself â€” otherwise a phone that navigates
+  // with the keyboard or a redirect comes back with the drawer still open.
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
   if (!user) return <Navigate to="/login" replace />;
 
   return (
     <div className="ricoz-shell flex min-h-screen bg-[#f3f5f8] font-sans text-slate-900">
+      <a href="#ricoz-main" className="ricoz-skip-link">Skip to main content</a>
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 p-4 sm:p-5 md:p-8">{children}</main>
+        <main id="ricoz-main" tabIndex={-1} className="min-w-0 flex-1 p-4 outline-none sm:p-5 md:p-8">
+          {children}
+        </main>
       </div>
     </div>
   );
@@ -51,8 +65,9 @@ const RoleProtectedRoute = ({ allowedRoles, children }) => {
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
@@ -68,7 +83,7 @@ function App() {
             path="/approvals"
             element={
               <ProtectedLayout>
-                <RoleProtectedRoute allowedRoles={['Admin', 'Manager']}>
+                <RoleProtectedRoute allowedRoles={MANAGER_ROLES}>
                   <ApprovalRequests />
                 </RoleProtectedRoute>
               </ProtectedLayout>
@@ -80,7 +95,7 @@ function App() {
             path="/renewals"
             element={
               <ProtectedLayout>
-                <RoleProtectedRoute allowedRoles={['Admin', 'Manager']}>
+                <RoleProtectedRoute allowedRoles={MANAGER_ROLES}>
                   <RenewalManagement />
                 </RoleProtectedRoute>
               </ProtectedLayout>
@@ -90,7 +105,7 @@ function App() {
             path="/reports"
             element={
               <ProtectedLayout>
-                <RoleProtectedRoute allowedRoles={['Admin', 'Manager']}>
+                <RoleProtectedRoute allowedRoles={MANAGER_ROLES}>
                   <Reports />
                 </RoleProtectedRoute>
               </ProtectedLayout>
@@ -100,7 +115,7 @@ function App() {
             path="/activity"
             element={
               <ProtectedLayout>
-                <RoleProtectedRoute allowedRoles={['Admin', 'Manager']}>
+                <RoleProtectedRoute allowedRoles={MANAGER_ROLES}>
                   <ActivityLog />
                 </RoleProtectedRoute>
               </ProtectedLayout>
@@ -110,7 +125,7 @@ function App() {
             path="/users"
             element={
               <ProtectedLayout>
-                <RoleProtectedRoute allowedRoles={['Admin']}>
+                <RoleProtectedRoute allowedRoles={ADMIN_ROLES}>
                   <UserManagement />
                 </RoleProtectedRoute>
               </ProtectedLayout>
@@ -120,7 +135,7 @@ function App() {
             path="/settings"
             element={
               <ProtectedLayout>
-                <RoleProtectedRoute allowedRoles={['Admin']}>
+                <RoleProtectedRoute allowedRoles={ADMIN_ROLES}>
                   <Settings />
                 </RoleProtectedRoute>
               </ProtectedLayout>
@@ -129,8 +144,9 @@ function App() {
           <Route path="/profile" element={<ProtectedLayout><Profile /></ProtectedLayout>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import API from '../services/api';
 import PasswordInput from '../components/PasswordInput';
+import SubmitButton from '../components/Layout/Common/SubmitButton';
+import AuthLayout, { AuthAside, inputClass, labelClass } from '../components/Layout/AuthLayout';
 
 const ResetPassword = () => {
 	const [searchParams] = useSearchParams();
@@ -16,6 +18,7 @@ const ResetPassword = () => {
 
 	const handleSubmit = async (event) => {
 		event.preventDefault();
+		if (loading) return;
 		setError('');
 		setSuccess('');
 
@@ -47,106 +50,98 @@ const ResetPassword = () => {
 	};
 
 	return (
-		<main className="min-h-screen bg-[#f4f6f9] px-4 py-10 flex items-center justify-center">
-			<div className="w-full max-w-5xl overflow-hidden rounded-[32px] border border-[#e5e7eb] bg-white shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-				<div className="grid md:grid-cols-[1.05fr_1fr]">
-					<section className="hidden md:flex flex-col justify-between bg-[#0f172a] p-10 text-white">
-						<div>
-							<div className="flex items-center gap-3">
-								<div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#d51d29] text-lg font-black text-white shadow-lg shadow-red-200">
-									RZ
-								</div>
-								<div className="text-2xl font-black tracking-[-0.05em] text-white">RicozContract</div>
-							</div>
-							<div className="mt-10 space-y-4">
-								<p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Account recovery</p>
-								<h1 className="text-4xl font-black leading-tight tracking-[-0.06em]">Choose a new password.</h1>
-							</div>
-						</div>
-
-						<div className="mt-10 rounded-[24px] border border-white/10 bg-white/5 p-5 shadow-inner shadow-slate-900/10">
-							<div className="space-y-3 text-sm text-slate-200">
-								<div className="rounded-xl bg-white/5 px-3 py-2">Use at least 6 characters.</div>
-								<div className="rounded-xl bg-white/5 px-3 py-2">This link can only be used once.</div>
-							</div>
-						</div>
-					</section>
-
-					<section className="p-8 md:p-10 lg:p-12">
-						<div className="mb-8">
-							<p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#d51d29]">RicozContract</p>
-							<h1 className="mt-3 text-3xl font-black tracking-[-0.05em] text-[#0f172a] md:text-4xl">Reset password</h1>
-							<p className="mt-2 text-sm text-[#475569]">Create a new password for your account.</p>
-						</div>
-
-						{error && (
-							<div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-								{error}
-							</div>
-						)}
-
-						{success && (
-							<div role="status" className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-								{success}
-							</div>
-						)}
-
-						{hasToken ? (
-							<form onSubmit={handleSubmit} className="space-y-5">
-								<label className="block text-sm font-medium text-[#334155]">
-									New password
-									<PasswordInput
-										name="password"
-										autoComplete="new-password"
-										required
-										minLength="6"
-										value={password}
-										onChange={(event) => setPassword(event.target.value)}
-										className="mt-2 w-full rounded-xl border border-[#dfe7f1] bg-[#f8fafc] px-3 py-3 text-[#0f172a] outline-none transition focus:border-[#d51d29] focus:bg-white focus:ring-4 focus:ring-red-100"
-									/>
-								</label>
-
-								<label className="block text-sm font-medium text-[#334155]">
-									Confirm new password
-									<PasswordInput
-										name="confirmPassword"
-										autoComplete="new-password"
-										required
-										minLength="6"
-										value={confirmPassword}
-										onChange={(event) => setConfirmPassword(event.target.value)}
-										className="mt-2 w-full rounded-xl border border-[#dfe7f1] bg-[#f8fafc] px-3 py-3 text-[#0f172a] outline-none transition focus:border-[#d51d29] focus:bg-white focus:ring-4 focus:ring-red-100"
-									/>
-								</label>
-
-								<button
-									type="submit"
-									disabled={loading}
-									className="w-full rounded-xl bg-[#d51d29] px-4 py-3.5 font-semibold text-white shadow-lg shadow-red-200 transition hover:bg-[#b91c26] disabled:cursor-not-allowed disabled:opacity-70"
-								>
-									{loading ? 'Resetting...' : 'Reset password'}
-								</button>
-							</form>
-						) : (
-							<div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-								This reset link is invalid or has expired. Please request a new one.
-								<div className="mt-3">
-									<Link to="/forgot-password" className="font-semibold text-[#d51d29] hover:text-[#b91c26]">
-										Request a new link
-									</Link>
-								</div>
-							</div>
-						)}
-
-						<p className="mt-6 text-center text-sm text-[#475569]">
-							<Link to="/login" className="font-semibold text-[#d51d29] hover:text-[#b91c26]">
-								Back to Sign in
-							</Link>
-						</p>
-					</section>
+		<AuthLayout
+			eyebrow="RicozContract"
+			title="Reset password"
+			subtitle="Create a new password for your account."
+			aside={
+				<AuthAside
+					headline="Choose a new password."
+					stats={[
+						['Minimum length', '6 characters'],
+						['Link usage', 'Once only'],
+						['Other sessions', 'Revoked on success']
+					]}
+				/>
+			}
+			footer={
+				<Link to="/login" className="font-semibold text-[#d51d29] hover:text-[#b91c26] dark:text-[#ff8a90]">
+					Back to sign in
+				</Link>
+			}
+		>
+			{error && (
+				<div
+					role="alert"
+					className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300"
+				>
+					{error}
 				</div>
-			</div>
-		</main>
+			)}
+
+			{success && (
+				<div
+					role="status"
+					className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300"
+				>
+					{success}
+				</div>
+			)}
+
+			{hasToken ? (
+				<form onSubmit={handleSubmit} className="space-y-5">
+					<label className={labelClass} htmlFor="reset-password">
+						New password
+						<PasswordInput
+							id="reset-password"
+							name="password"
+							autoComplete="new-password"
+							required
+							minLength="6"
+							value={password}
+							onChange={(event) => setPassword(event.target.value)}
+							className={inputClass}
+						/>
+					</label>
+
+					<label className={labelClass} htmlFor="reset-confirm">
+						Confirm new password
+						<PasswordInput
+							id="reset-confirm"
+							name="confirmPassword"
+							autoComplete="new-password"
+							required
+							minLength="6"
+							value={confirmPassword}
+							onChange={(event) => setConfirmPassword(event.target.value)}
+							className={inputClass}
+						/>
+					</label>
+
+					<SubmitButton
+						loading={loading}
+						loadingLabel="Resetting…"
+						className="w-full rounded-xl bg-[#d51d29] px-4 py-3.5 font-semibold text-white shadow-lg shadow-red-200 transition hover:bg-[#b91c26]"
+					>
+						Reset password
+					</SubmitButton>
+				</form>
+			) : (
+				!success && (
+					<div
+						role="alert"
+						className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300"
+					>
+						This reset link is invalid or has expired. Please request a new one.
+						<div className="mt-3">
+							<Link to="/forgot-password" className="font-semibold underline">
+								Request a new link
+							</Link>
+						</div>
+					</div>
+				)
+			)}
+		</AuthLayout>
 	);
 };
 

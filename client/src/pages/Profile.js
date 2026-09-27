@@ -4,6 +4,7 @@ import API from '../services/api';
 import { LogOut, UserCircle2, Briefcase, Mail, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import Toast from '../components/Layout/Common/Toast';
 import PasswordInput from '../components/PasswordInput';
+import SubmitButton from '../components/Layout/Common/SubmitButton';
 
 const Profile = () => {
   const { user, logout, updateProfile } = useContext(AuthContext);
@@ -23,6 +24,7 @@ const Profile = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError('');
     try {
@@ -45,15 +47,15 @@ const Profile = () => {
   return (
     <div className="mx-auto max-w-5xl space-y-8">
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Account workspace</p>
-          <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">My profile</h1>
+          <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">My profile</h1>
           <p className="mt-2 text-slate-500">Your identity, access level, and workspace details.</p>
         </div>
         <button
           onClick={logout}
-          className="inline-flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100"
+          className="inline-flex shrink-0 items-center gap-2 self-start rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100"
         >
           <LogOut className="h-4 w-4" />
           Logout
@@ -75,16 +77,19 @@ const Profile = () => {
         <div className="space-y-6">
           <form onSubmit={handleSubmit} className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-2xl font-black tracking-[-0.05em] text-[#0f172a]">Profile details</h2>
-            {error && <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+            {error && <div role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="rounded-2xl border border-slate-100 bg-[#f7f7f8] p-4 text-sm">
+              {/* Read-only identity tiles. These are plain divs, not labels:
+                  a label with no form control inside it is invalid and
+                  confuses screen readers about what it labels. */}
+              <div className="rounded-2xl border border-slate-100 bg-[#f7f7f8] p-4 text-sm">
                 <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><Mail className="h-4 w-4" /> Email</span>
-                <p className="font-medium text-slate-800">{user.email}</p>
-              </label>
-              <label className="rounded-2xl border border-slate-100 bg-[#f7f7f8] p-4 text-sm">
+                <p className="font-medium break-words text-slate-800">{user.email}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-100 bg-[#f7f7f8] p-4 text-sm">
                 <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><ShieldCheck className="h-4 w-4" /> Role</span>
                 <p className="font-medium text-slate-800">{user.role}</p>
-              </label>
+              </div>
               <label className="rounded-2xl border border-slate-100 bg-[#f7f7f8] p-4 text-sm">
                 Name
                 <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-2" />
@@ -102,9 +107,13 @@ const Profile = () => {
                 <PasswordInput name="newPassword" autoComplete="new-password" minLength="6" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-2" />
               </label>
             </div>
-            <button disabled={saving} className="mt-5 rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
-              {saving ? 'Saving...' : 'Save profile'}
-            </button>
+            <SubmitButton
+              loading={saving}
+              loadingLabel="Saving…"
+              className="mt-5 w-full rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white sm:w-auto"
+            >
+              Save profile
+            </SubmitButton>
           </form>
         </div>
       </div>

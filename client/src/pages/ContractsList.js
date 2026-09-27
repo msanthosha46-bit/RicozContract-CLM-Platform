@@ -3,6 +3,8 @@ import API from '../services/api';
 import StatusBadge from '../components/Layout/Common/StatusBadge';
 import { Link } from 'react-router-dom';
 import { Search, Plus, FileText, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { SkeletonRows } from '../components/Layout/Common/Skeleton';
+import EmptyState from '../components/Layout/Common/EmptyState';
 
 const PAGE_SIZE = 20;
 
@@ -56,7 +58,7 @@ const ContractsList = () => {
       <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Your workspace</p>
-          <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">Contract repository</h1>
+          <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Contract repository</h1>
           <p className="mt-2 max-w-xl text-slate-500">Keep every agreement, owner, renewal date, and commercial detail in one clear view.</p>
         </div>
         <Link
@@ -77,10 +79,11 @@ const ContractsList = () => {
           <SlidersHorizontal className="h-4 w-4" /> Filter and search
         </div>
         <div className="flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[240px] relative">
+        <div className="flex-1 min-w-0 sm:min-w-[240px] relative">
           <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
           <input
-            type="text"
+            type="search"
+            aria-label="Search contracts"
             placeholder="Search by Title, Number, or Party..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -89,6 +92,7 @@ const ContractsList = () => {
         </div>
 
         <select
+          aria-label="Filter by status"
           value={status}
           onChange={(e) => { setStatus(e.target.value); setPage(1); }}
           className="rounded-xl border border-slate-200 bg-[#f8fafc] px-3 py-3 text-sm outline-none focus:border-[#1d4ed8] focus:ring-4 focus:ring-blue-100"
@@ -102,6 +106,7 @@ const ContractsList = () => {
         </select>
 
         <select
+          aria-label="Filter by type"
           value={type}
           onChange={(e) => { setType(e.target.value); setPage(1); }}
           className="rounded-xl border border-slate-200 bg-[#f8fafc] px-3 py-3 text-sm outline-none focus:border-[#1d4ed8] focus:ring-4 focus:ring-blue-100"
@@ -116,47 +121,78 @@ const ContractsList = () => {
       </div>
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
         {loading ? (
-          <div className="p-10 text-center text-slate-500">Loading contracts...</div>
+          <div className="px-4 py-2" role="status" aria-live="polite" aria-busy="true">
+            <span className="sr-only">Loading contracts…</span>
+            <SkeletonRows rows={8} columns={6} />
+          </div>
         ) : contracts.length === 0 ? (
-          <div className="p-10 text-center text-slate-500">No contracts found matching these filters.</div>
+          <EmptyState
+            icon={FileText}
+            title="No contracts found"
+            description={
+              debouncedSearch || status || type
+                ? 'No contracts match these filters. Try clearing the search or filters.'
+                : 'Create your first contract to start tracking agreements, obligations, and renewals.'
+            }
+            action={
+              debouncedSearch || status || type ? (
+                <button
+                  type="button"
+                  onClick={() => { setSearch(''); setStatus(''); setType(''); setPage(1); }}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-[#d51d29] hover:text-[#d51d29]"
+                >
+                  <SlidersHorizontal className="h-4 w-4" /> Clear filters
+                </button>
+              ) : (
+                <Link to="/contracts/create" className="inline-flex items-center gap-2 rounded-xl bg-[#d51d29] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#b91c26]">
+                  <Plus className="h-4 w-4" /> Create contract
+                </Link>
+              )
+            }
+          />
         ) : (
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="border-b border-slate-200 bg-[#f7f7f8] text-xs uppercase tracking-[0.1em] text-slate-500">
-              <tr>
-                <th className="py-3 px-4">Contract #</th>
-                <th className="py-3 px-4">Title</th>
-                <th className="py-3 px-4">Type</th>
-                <th className="py-3 px-4">Party Name</th>
-                <th className="py-3 px-4">End Date</th>
-                <th className="py-3 px-4">Amount</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {contracts.map((c) => (
-                <tr key={c._id} className="transition hover:bg-[#f8fafc]">
-                  <td className="py-3 px-4 font-mono text-xs text-slate-500">{c.contractNumber}</td>
-                  <td className="py-3 px-4 font-semibold text-slate-800">{c.title}</td>
-                  <td className="py-3 px-4">{c.type}</td>
-                  <td className="py-3 px-4">{c.partyName}</td>
-                  <td className="py-3 px-4">{new Date(c.endDate).toLocaleDateString()}</td>
-                  <td className="py-3 px-4 font-medium">{c.currency} {Number(c.amount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                  <td className="py-3 px-4"><StatusBadge status={c.status} /></td>
-                  <td className="py-3 px-4 text-right space-x-2">
-                    <Link to={`/contracts/${c._id}`} className="text-xs font-semibold text-[#1d4ed8] hover:text-[#1e40af]">
-                      Details
-                    </Link>
-                  </td>
+          /* Own scroll container: index.css floors tables at 40rem on a phone
+             and this parent clips, so without it the right-hand columns
+             (End Date, Amount, Status) would be unreachable. */
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="border-b border-slate-200 bg-[#f7f7f8] text-xs uppercase tracking-[0.1em] text-slate-500">
+                <tr>
+                  <th scope="col" className="py-3 px-4">Contract #</th>
+                  <th scope="col" className="py-3 px-4">Title</th>
+                  <th scope="col" className="py-3 px-4">Type</th>
+                  <th scope="col" className="py-3 px-4">Party Name</th>
+                  <th scope="col" className="py-3 px-4">End Date</th>
+                  <th scope="col" className="py-3 px-4">Amount</th>
+                  <th scope="col" className="py-3 px-4">Status</th>
+                  <th scope="col" className="py-3 px-4 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {contracts.map((c) => (
+                  <tr key={c._id} className="transition hover:bg-[#f8fafc]">
+                    <td className="py-3 px-4 font-mono text-xs text-slate-500">{c.contractNumber}</td>
+                    <td className="py-3 px-4 font-semibold text-slate-800">{c.title}</td>
+                    <td className="py-3 px-4">{c.type}</td>
+                    <td className="py-3 px-4">{c.partyName}</td>
+                    <td className="py-3 px-4 whitespace-nowrap">{new Date(c.endDate).toLocaleDateString()}</td>
+                    <td className="py-3 px-4 whitespace-nowrap font-medium tabular-nums">{c.currency} {Number(c.amount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                    <td className="py-3 px-4"><StatusBadge status={c.status} /></td>
+                    <td className="py-3 px-4 text-right">
+                      <Link to={`/contracts/${c._id}`} className="inline-flex rounded-md px-2 py-1 text-xs font-semibold text-[#1d4ed8] hover:text-[#1e40af] focus-visible:bg-blue-100 dark:hover:bg-blue-500/20">
+                        Details
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

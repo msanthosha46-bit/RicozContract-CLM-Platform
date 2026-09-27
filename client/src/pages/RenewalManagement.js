@@ -4,6 +4,8 @@ import { CalendarClock, History } from 'lucide-react';
 import Modal from '../components/Layout/Common/Modal';
 import Toast from '../components/Layout/Common/Toast';
 import { formatDate, formatDateTime, toDateInput, daysLabel, reminderTier } from '../utils/date';
+import { PageSkeleton } from '../components/Layout/Common/Skeleton';
+import EmptyState from '../components/Layout/Common/EmptyState';
 
 const reminderStyles = {
   30: 'bg-red-100 text-red-700',
@@ -58,6 +60,7 @@ const RenewalManagement = () => {
 
   const renewContract = async (event) => {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError('');
     try {
@@ -77,7 +80,7 @@ const RenewalManagement = () => {
     : expiringContracts.filter((contract) => reminderTier(contract.daysRemaining) === filter);
 
   if (loading) {
-    return <div className="p-8 text-slate-500">Loading renewal records...</div>;
+    return <PageSkeleton rows={6} columns={7} />;
   }
 
   return (
@@ -85,7 +88,7 @@ const RenewalManagement = () => {
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
       <div>
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Lifecycle</p>
-        <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">Renewal management</h1>
+        <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Renewal management</h1>
         <p className="mt-2 text-slate-500">Stay ahead of every expiring agreement with 30/60/90-day reminders and a full renewal trail.</p>
       </div>
 
@@ -114,20 +117,29 @@ const RenewalManagement = () => {
 
         <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
           {filtered.length === 0 ? (
-            <div className="p-8 text-center text-slate-500">
-              {filter === 'all' ? 'No contracts expiring in the next 90 days.' : 'No contracts in this reminder window.'}
-            </div>
+            <EmptyState
+              icon={CalendarClock}
+              title={filter === 'all' ? 'Nothing expiring soon' : 'Nothing in this window'}
+              description={
+                filter === 'all'
+                  ? 'No contracts expire in the next 90 days. Agreements appear here as their end date approaches.'
+                  : 'No contracts fall inside this reminder window. Try a wider window.'
+              }
+            />
           ) : (
+            /* Own scroll container: the table needs 40rem on a phone and this
+               parent clips overflow, so Reminder / Status / Action would be cut. */
+            <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-slate-600">
               <thead className="bg-[#f7f7f8] text-xs uppercase tracking-[0.1em] text-slate-500">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Contract</th>
-                  <th className="px-4 py-3 font-medium">Party</th>
-                  <th className="px-4 py-3 font-medium">End Date</th>
-                  <th className="px-4 py-3 font-medium">Days Remaining</th>
-                  <th className="px-4 py-3 font-medium">Reminder</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium text-right">Action</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Contract</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Party</th>
+                  <th scope="col" className="px-4 py-3 font-medium">End Date</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Days Remaining</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Reminder</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Status</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -137,26 +149,28 @@ const RenewalManagement = () => {
                       <div className="font-medium text-slate-800">{contract.title}</div>
                       <div className="text-xs text-slate-500">{contract.contractNumber}</div>
                     </td>
-                    <td className="px-4 py-3">{contract.partyName}</td>
-                    <td className="px-4 py-3">{formatDate(contract.endDate)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{contract.partyName}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(contract.endDate)}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${contract.daysRemaining <= 30 ? 'bg-red-100 text-red-700' : contract.daysRemaining <= 60 ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${contract.daysRemaining <= 30 ? 'bg-red-100 text-red-700' : contract.daysRemaining <= 60 ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
                         {daysLabel(contract.daysRemaining)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${reminderStyles[contract.reminder] || 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${reminderStyles[contract.reminder] || 'bg-slate-100 text-slate-600'}`}>
                         {contract.reminder}-day
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE[contract.status] || 'bg-slate-100 text-slate-700'}`}>
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE[contract.status] || 'bg-slate-100 text-slate-700'}`}>
                         {contract.status}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
+                        type="button"
                         onClick={() => openRenew(contract)}
+                        aria-label={`Renew ${contract.contractNumber}`}
                         className="inline-flex items-center gap-2 rounded-xl bg-[#0f172a] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1e293b]"
                       >
                         <CalendarClock className="h-3.5 w-3.5" /> Renew
@@ -166,6 +180,7 @@ const RenewalManagement = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>
@@ -177,17 +192,24 @@ const RenewalManagement = () => {
         </div>
         <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
           {history.length === 0 ? (
-            <div className="p-8 text-center text-slate-500">No renewals recorded yet. Renew a contract to build your history.</div>
+            <EmptyState
+              icon={History}
+              title="No renewals recorded yet"
+              description="Renew a contract from the list above and the full trail is kept here."
+            />
           ) : (
+            /* Own scroll container: the table needs 40rem on a phone and this
+               parent clips overflow, so Notes would be cut off. */
+            <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-slate-600">
               <thead className="bg-[#f7f7f8] text-xs uppercase tracking-[0.1em] text-slate-500">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Contract</th>
-                  <th className="px-4 py-3 font-medium">Previous End Date</th>
-                  <th className="px-4 py-3 font-medium">New End Date</th>
-                  <th className="px-4 py-3 font-medium">Renewed By</th>
-                  <th className="px-4 py-3 font-medium">Renewed On</th>
-                  <th className="px-4 py-3 font-medium">Notes</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Contract</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Previous End Date</th>
+                  <th scope="col" className="px-4 py-3 font-medium">New End Date</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Renewed By</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Renewed On</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Notes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -197,15 +219,16 @@ const RenewalManagement = () => {
                       <div className="font-medium text-slate-800">{entry.contract?.title || 'Unknown contract'}</div>
                       <div className="text-xs text-slate-500">{entry.contract?.contractNumber || ''}</div>
                     </td>
-                    <td className="px-4 py-3">{formatDate(entry.oldEndDate)}</td>
-                    <td className="px-4 py-3">{formatDate(entry.newEndDate)}</td>
-                    <td className="px-4 py-3">{entry.renewedBy?.name || 'Unknown'}</td>
-                    <td className="px-4 py-3">{formatDateTime(entry.createdAt)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(entry.oldEndDate)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(entry.newEndDate)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{entry.renewedBy?.name || 'Unknown'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDateTime(entry.createdAt)}</td>
                     <td className="px-4 py-3 text-xs text-slate-500">{entry.notes || '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>
@@ -216,8 +239,8 @@ const RenewalManagement = () => {
         title={selected ? `Renew ${selected.contractNumber}` : 'Renew contract'}
         footer={
           <>
-            <button onClick={() => setSelected(null)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
-            <button form="renew-form" disabled={saving} className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            <button type="button" onClick={() => setSelected(null)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button>
+            <button type="submit" form="renew-form" disabled={saving} className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
               {saving ? 'Renewing...' : 'Confirm renewal'}
             </button>
           </>

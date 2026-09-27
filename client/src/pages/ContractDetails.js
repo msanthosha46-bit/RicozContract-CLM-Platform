@@ -56,6 +56,8 @@ const ContractDetails = () => {
   const [fileInputKey, setFileInputKey] = useState(0);
   const [toast, setToast] = useState(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [submittingForApproval, setSubmittingForApproval] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const isAdmin = user?.role === 'Admin';
 
   const fetchContract = async () => {
@@ -110,21 +112,30 @@ const ContractDetails = () => {
   };
 
   const handleArchive = async () => {
+    if (archiving) return;
+    setArchiving(true);
     try {
       await API.patch(`/contracts/${id}/archive`);
       setToast({ type: 'success', message: 'Contract archived' });
       navigate('/contracts');
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to archive contract');
+      setArchiving(false);
     }
   };
 
   const handleSubmitForApproval = async () => {
+    // Guard: the button stays visible while the request is in flight, so a
+    // double-click would otherwise queue two approval submissions.
+    if (submittingForApproval) return;
+    setSubmittingForApproval(true);
     try {
       await API.post(`/approvals/submit/${id}`);
       await fetchContract();
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to submit for approval');
+    } finally {
+      setSubmittingForApproval(false);
     }
   };
 
@@ -153,39 +164,83 @@ const ContractDetails = () => {
   };
 
   if (loading) {
-    return <div className="p-8 text-slate-500">Loading contract details...</div>;
+    return (
+      <div className="space-y-6" role="status" aria-live="polite" aria-busy="true">
+        <span className="sr-only">Loading contract details…</span>
+        <div className="flex items-center gap-3">
+          <div aria-hidden="true" className="ricoz-skeleton h-9 w-9 rounded-xl" />
+          <div className="flex-1 space-y-2">
+            <div aria-hidden="true" className="ricoz-skeleton h-3 w-28 rounded-lg" />
+            <div aria-hidden="true" className="ricoz-skeleton h-8 w-64 max-w-full rounded-lg" />
+          </div>
+        </div>
+        <div className="grid gap-6 xl:grid-cols-3">
+          <div className="space-y-6 xl:col-span-2">
+            <div className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div aria-hidden="true" className="ricoz-skeleton mb-5 h-6 w-40 rounded-lg" />
+              <div className="grid gap-4 md:grid-cols-2">
+                {Array.from({ length: 6 }, (_, index) => (
+                  <div key={index} aria-hidden="true" className="ricoz-skeleton h-10 w-full rounded-lg" />
+                ))}
+              </div>
+            </div>
+            <div className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div aria-hidden="true" className="ricoz-skeleton mb-5 h-6 w-32 rounded-lg" />
+              <div aria-hidden="true" className="ricoz-skeleton h-24 w-full rounded-lg" />
+            </div>
+          </div>
+          <div className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div aria-hidden="true" className="ricoz-skeleton mb-5 h-6 w-28 rounded-lg" />
+            {Array.from({ length: 5 }, (_, index) => (
+              <div key={index} aria-hidden="true" className="ricoz-skeleton mb-3 h-9 w-full rounded-lg" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!contract) {
-    return <div className="p-8 text-red-600">{error || 'Contract not found'}</div>;
+    return (
+      <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
+        {error || 'Contract not found'}
+        <Link to="/contracts" className="mt-3 block font-semibold underline">Back to contracts</Link>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/contracts')} className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <button type="button" onClick={() => navigate('/contracts')} aria-label="Back to contracts" className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50">
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
+          <div className="min-w-0">
             <p className="text-xs uppercase tracking-[0.16em] text-[#1d4ed8]">{contract.contractNumber}</p>
-            <h1 className="mt-2 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">{contract.title}</h1>
+            <h1 className="mt-2 break-words text-2xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-3xl lg:text-4xl">{contract.title}</h1>
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex shrink-0 flex-wrap gap-2">
           <Link to={`/contracts/${id}/edit`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             <Pencil className="w-4 h-4" /> Edit
           </Link>
           {canSubmitForApproval(contract.status) && (
-            <button onClick={handleSubmitForApproval} className="inline-flex items-center gap-2 rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1e293b]">
-              <BadgeCheck className="w-4 h-4" /> Submit for Approval
+            <button
+              type="button"
+              onClick={handleSubmitForApproval}
+              disabled={submittingForApproval}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1e293b] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submittingForApproval ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <BadgeCheck className="w-4 h-4" />}
+              {submittingForApproval ? 'Submitting…' : 'Submit for Approval'}
             </button>
           )}
         </div>
       </div>
 
-      {error && <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3 text-sm">{error}</div>}
+      {error && <div role="alert" className="rounded-lg bg-red-50 text-red-700 px-4 py-3 text-sm">{error}</div>}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
