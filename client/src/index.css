@@ -262,6 +262,178 @@
 }
 
 /* ------------------------------------------------------------------ *
+ * Status pills
+ *
+ * The six neutral statuses own their palette here rather than in
+ * StatusBadge.js, for two reasons.
+ *
+ * First, the legacy overrides further down this file rewrite `bg-slate-*`,
+ * `text-slate-*` and `border-slate-*` inside `.ricoz-shell main` to theme
+ * tokens, and because those rules are unlayered they outrank Tailwind's
+ * `dark:` utilities. A pill built from slate classes therefore lost its dark
+ * values: Draft, Expired and Closed all collapsed onto the same fill, text
+ * and border, and no amount of re-picking a different slate step would have
+ * shown up. Using semantic classes sidesteps that entirely.
+ *
+ * Second, six states in one ramp need the whole range to stay separable. The
+ * three "live" states carry light fills so they read as a group that stands
+ * out; Draft, Expired and Closed take an evenly spaced grey ramp, which suits
+ * a lifecycle that fades out.
+ *
+ * Every value below is chosen to clear WCAG AA against its own fill, and to
+ * stay separable from the other five. `test/statusBadge.test.js` re-checks
+ * all of that, so a future edit cannot quietly undo it.
+ * ------------------------------------------------------------------ */
+.rz-pill {
+	border-width: 1px;
+}
+
+.rz-active {
+	background-color: #334155;
+	color: #ffffff;
+	border-color: #1e293b;
+}
+
+.rz-inprogress {
+	background-color: #94a3b8;
+	color: #0f172a;
+	border-color: #64748b;
+}
+
+.rz-renewed {
+	background-color: #cbd5e1;
+	color: #1e293b;
+	border-color: #64748b;
+}
+
+.rz-draft {
+	background-color: #f1f5f9;
+	color: #334155;
+	border-color: #cbd5e1;
+}
+
+.rz-expired {
+	background-color: #e2e8f0;
+	color: #475569;
+	border-color: #94a3b8;
+}
+
+.rz-closed {
+	background-color: #64748b;
+	color: #ffffff;
+	border-color: #334155;
+}
+
+.dark .rz-active {
+	background-color: #cbd5e1;
+	color: #0f172a;
+	border-color: #f1f5f9;
+}
+
+.dark .rz-inprogress {
+	background-color: #94a3b8;
+	color: #0f172a;
+	border-color: #64748b;
+}
+
+.dark .rz-renewed {
+	background-color: #334155;
+	color: #f8fafc;
+	border-color: #94a3b8;
+}
+
+.dark .rz-draft {
+	background-color: #475569;
+	color: #f8fafc;
+	border-color: #334155;
+}
+
+.dark .rz-expired {
+	background-color: #1e293b;
+	color: #cbd5e1;
+	border-color: #475569;
+}
+
+.dark .rz-closed {
+	background-color: #0f172a;
+	color: #94a3b8;
+	border-color: #334155;
+}
+
+/* The fallback for a status the client does not recognise -- a stale value
+   from an older release, or a bad enum in the database. It has to be a
+   semantic class for the same reason the six above are: a `bg-slate-*`
+   fallback gets rewritten by the `.dark .ricoz-shell main` overrides and
+   comes out unreadable.
+
+   The six states above spend the whole slate ramp, so there is no seventh
+   neutral fill to hand out. Instead the fallback is unfilled and outlined,
+   which reads as "unset" and cannot collide with a real state no matter how
+   the ramp is later retuned. The dashed edge is the signal, and it needs no
+   `border-style` from Tailwind because this rule sets one. */
+.rz-unknown {
+	background-color: transparent;
+	color: #334155;
+	border-color: #64748b;
+	border-style: dashed;
+}
+
+.dark .rz-unknown {
+	background-color: transparent;
+	color: #cbd5e1;
+	border-color: #94a3b8;
+}
+
+/* ------------------------------------------------------------------ *
+ * Renewal urgency
+ *
+ * How close a contract is to expiring is a different question from what
+ * state it is in, so these deliberately sit outside the six-state neutral
+ * ramp above -- a 30-day chip must never be mistaken for a status pill.
+ * Hue carries the meaning (red, amber, indigo) and a reader should be able
+ * to triage the table on colour alone.
+ *
+ * The 90-day tier is indigo rather than the blue it used to be. Blue was the
+ * legacy utility this file already overrides for dark mode, and next to the
+ * Status column it read as a state; indigo separates cleanly from both the
+ * neutral ramp and the red/amber tiers above it.
+ *
+ * The red and amber fills mirror what `.dark .ricoz-shell main` produced for
+ * the old red/amber utilities, so those two tiers look unchanged in both
+ * themes, but as unlayered rules they can no longer be rewritten by it. The
+ * 90-day tier is a visible change: see above.
+ * ------------------------------------------------------------------ */
+.rz-urgency-30 {
+	background-color: #fee2e2;
+	color: #b91c1c;
+}
+
+.rz-urgency-60 {
+	background-color: #fef3c7;
+	color: #b45309;
+}
+
+.rz-urgency-90 {
+	background-color: #e0e7ff;
+	color: #4338ca;
+}
+
+.dark .rz-urgency-30 {
+	background-color: rgba(244, 63, 94, 0.18);
+	color: #fda4af;
+}
+
+.dark .rz-urgency-60 {
+	background-color: rgba(245, 158, 11, 0.18);
+	color: #fcd34d;
+}
+
+.dark .rz-urgency-90 {
+	background-color: rgba(99, 102, 241, 0.2);
+	color: #a5b4fc;
+}
+
+/* ------------------------------------------------------------------ *
  * Mobile
  * ------------------------------------------------------------------ */
 @media (max-width: 767px) {

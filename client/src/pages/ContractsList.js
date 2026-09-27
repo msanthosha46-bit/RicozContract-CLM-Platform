@@ -70,7 +70,7 @@ const ContractsList = () => {
       </div>
 
       <div className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eaf1ff] text-[#1d4ed8]"><FileText className="h-4 w-4" /></div>
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fff0f0] text-[#d51d29] dark:bg-[#d51d29]/15 dark:text-[#ff8a90]"><FileText className="h-4 w-4" /></div>
         <span>{total} contracts in your repository {totalPages > 1 && <span className="font-normal text-slate-400">· page {page} of {totalPages}</span>}</span>
       </div>
 

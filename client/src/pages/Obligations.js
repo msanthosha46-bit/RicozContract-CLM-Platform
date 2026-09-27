@@ -10,9 +10,15 @@ import { PageSkeleton } from '../components/Layout/Common/Skeleton';
 import EmptyState from '../components/Layout/Common/EmptyState';
 import { ClipboardCheck } from 'lucide-react';
 
+// Work-item statuses are their own four-state vocabulary, deliberately
+// separate from the thirteen contract statuses in StatusBadge. Pending,
+// Completed and Overdue keep their bright hue so the meaning still reads at
+// a glance; In Progress borrows the neutral `rz-inprogress` fill so the same
+// word looks the same wherever it appears. These chips stay borderless, which
+// is why they use `rz-inprogress` without `rz-pill`.
 const statusStyles = {
   Pending: 'bg-amber-100 text-amber-700',
-  'In Progress': 'bg-blue-100 text-blue-700',
+  'In Progress': 'rz-inprogress',
   Completed: 'bg-emerald-100 text-emerald-700',
   Overdue: 'bg-red-100 text-red-700'
 };
@@ -178,7 +184,7 @@ const Obligations = () => {
         {canManage ? (
           <button onClick={openCreate} className="shrink-0 self-start rounded-xl bg-[#0f172a] px-4 py-3 text-sm font-semibold text-white sm:self-auto">New obligation</button>
         ) : (
-          <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8] sm:flex"><ShieldCheck className="h-6 w-6" /></div>
+          <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#fff0f0] text-[#d51d29] dark:bg-[#d51d29]/15 dark:text-[#ff8a90] sm:flex"><ShieldCheck className="h-6 w-6" /></div>
         )}
       </div>
 
@@ -232,7 +238,7 @@ const Obligations = () => {
                       {ob.status !== 'Completed' && <div className="text-xs text-slate-400">{daysLabel(days)}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[ob.status] || 'bg-slate-100 text-slate-700'}`}>
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[ob.status] || 'rz-pill rz-unknown'}`}>
                         {ob.status}
                       </span>
                     </td>
@@ -354,7 +360,7 @@ const Obligations = () => {
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-400">Status</p>
-              <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[viewTarget.status] || 'bg-slate-100 text-slate-700'}`}>
+              <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[viewTarget.status] || 'rz-pill rz-unknown'}`}>
                 {viewTarget.status}
               </span>
             </div>

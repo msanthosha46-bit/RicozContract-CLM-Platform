@@ -9,9 +9,15 @@ import { canTransitionItem, statusOptionsFor } from '../utils/itemTransitions';
 import { PageSkeleton } from '../components/Layout/Common/Skeleton';
 import EmptyState from '../components/Layout/Common/EmptyState';
 
+// Work-item statuses are their own four-state vocabulary, deliberately
+// separate from the thirteen contract statuses in StatusBadge. Pending,
+// Completed and Overdue keep their bright hue so the meaning still reads at
+// a glance; In Progress borrows the neutral `rz-inprogress` fill so the same
+// word looks the same wherever it appears. These chips stay borderless, which
+// is why they use `rz-inprogress` without `rz-pill`.
 const statusStyles = {
   Pending: 'bg-amber-100 text-amber-700',
-  'In Progress': 'bg-blue-100 text-blue-700',
+  'In Progress': 'rz-inprogress',
   Completed: 'bg-emerald-100 text-emerald-700',
   Overdue: 'bg-red-100 text-red-700'
 };
@@ -176,7 +182,7 @@ const Milestones = () => {
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8]"><Flag className="h-6 w-6" /></div>
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#fff0f0] text-[#d51d29] dark:bg-[#d51d29]/15 dark:text-[#ff8a90]"><Flag className="h-6 w-6" /></div>
           <div>
             <p className="ricoz-eyebrow">Contract lifecycle</p>
             <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Milestones</h1>
@@ -207,10 +213,16 @@ const Milestones = () => {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 text-xs font-semibold">
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700">Pending {pending}</span>
-            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700">In Progress {inProgress}</span>
-            <span className="rounded-full bg-red-100 px-2.5 py-1 text-red-700">Overdue {overdue}</span>
-            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">Completed {completed}</span>
+            {[
+              ['Pending', pending],
+              ['In Progress', inProgress],
+              ['Overdue', overdue],
+              ['Completed', completed]
+            ].map(([label, count]) => (
+              <span key={label} className={`rounded-full px-2.5 py-1 ${statusStyles[label]}`}>
+                {label} {count}
+              </span>
+            ))}
           </div>
         </div>
       )}
@@ -258,7 +270,7 @@ const Milestones = () => {
                       {milestone.status !== 'Completed' && <div className="text-xs text-slate-400">{daysLabel(days)}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[milestone.status] || 'bg-slate-100 text-slate-700'}`}>
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[milestone.status] || 'rz-pill rz-unknown'}`}>
                         {milestone.status}
                       </span>
                     </td>
@@ -380,7 +392,7 @@ const Milestones = () => {
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-400">Status</p>
-              <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[viewTarget.status] || 'bg-slate-100 text-slate-700'}`}>
+              <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[viewTarget.status] || 'rz-pill rz-unknown'}`}>
                 {viewTarget.status}
               </span>
             </div>

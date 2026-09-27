@@ -6,17 +6,16 @@ import Toast from '../components/Layout/Common/Toast';
 import { formatDate, formatDateTime, toDateInput, daysLabel, reminderTier } from '../utils/date';
 import { PageSkeleton } from '../components/Layout/Common/Skeleton';
 import EmptyState from '../components/Layout/Common/EmptyState';
+import StatusBadge from '../components/Layout/Common/StatusBadge';
 
+// How close a contract is to expiring, not what state it is in. The tiers are
+// keyed by the same numbers `reminderTier()` returns, so the Reminder column
+// and the Days Remaining column below can share one lookup instead of each
+// re-deriving the thresholds.
 const reminderStyles = {
-  30: 'bg-red-100 text-red-700',
-  60: 'bg-amber-100 text-amber-700',
-  90: 'bg-blue-100 text-blue-700'
-};
-
-const STATUS_BADGE = {
-  Active: 'bg-emerald-100 text-emerald-700',
-  Approved: 'bg-blue-100 text-blue-700',
-  Expired: 'bg-red-100 text-red-700'
+  30: 'rz-urgency-30',
+  60: 'rz-urgency-60',
+  90: 'rz-urgency-90'
 };
 
 const RenewalManagement = () => {
@@ -152,19 +151,17 @@ const RenewalManagement = () => {
                     <td className="px-4 py-3 whitespace-nowrap">{contract.partyName}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{formatDate(contract.endDate)}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${contract.daysRemaining <= 30 ? 'bg-red-100 text-red-700' : contract.daysRemaining <= 60 ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${reminderStyles[reminderTier(contract.daysRemaining)] || 'rz-pill rz-unknown'}`}>
                         {daysLabel(contract.daysRemaining)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${reminderStyles[contract.reminder] || 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${reminderStyles[contract.reminder] || 'rz-pill rz-unknown'}`}>
                         {contract.reminder}-day
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE[contract.status] || 'bg-slate-100 text-slate-700'}`}>
-                        {contract.status}
-                      </span>
+                      <StatusBadge status={contract.status} />
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button

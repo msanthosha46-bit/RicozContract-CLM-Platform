@@ -61,7 +61,7 @@ const ActivityLog = () => {
           <div className="divide-y divide-slate-100">
             {activities.map((entry) => (
               <div key={entry._id} className="flex gap-4 p-5">
-                <div className="mt-0.5 rounded-xl bg-[#eaf1ff] p-2 text-[#1d4ed8]">
+                <div className="mt-0.5 rounded-xl bg-[#fff0f0] p-2 text-[#d51d29] dark:bg-[#d51d29]/15 dark:text-[#ff8a90]">
                   <Activity className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
