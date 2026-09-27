@@ -42,8 +42,8 @@ const CreateContract = () => {
       <div className="flex items-start gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8]"><FilePlus2 className="h-6 w-6" /></div>
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Contract workspace</p>
-          <h1 className="mt-2 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Create a new contract</h1>
+          <p className="ricoz-eyebrow">Contract workspace</p>
+          <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Create a new contract</h1>
           <p className="mt-2 text-slate-500">Capture the commercial details now and keep the agreement ready for review.</p>
         </div>
       </div>

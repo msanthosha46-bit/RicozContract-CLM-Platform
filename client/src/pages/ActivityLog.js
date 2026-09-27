@@ -43,8 +43,8 @@ const ActivityLog = () => {
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Governance</p>
-        <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Activity log</h1>
+        <p className="ricoz-eyebrow">Governance</p>
+        <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Activity log</h1>
         <p className="mt-1 text-sm text-slate-500">Recent contract and lifecycle actions across the workspace.</p>
       </div>
 

@@ -57,8 +57,8 @@ const ContractsList = () => {
     <div className="space-y-8">
       <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Your workspace</p>
-          <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Contract repository</h1>
+          <p className="ricoz-eyebrow">Your workspace</p>
+          <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Contract repository</h1>
           <p className="mt-2 max-w-xl text-slate-500">Keep every agreement, owner, renewal date, and commercial detail in one clear view.</p>
         </div>
         <Link

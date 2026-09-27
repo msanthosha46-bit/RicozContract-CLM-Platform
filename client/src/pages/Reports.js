@@ -38,8 +38,8 @@ const Reports = () => {
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Insights</p>
-        <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Reports &amp; analytics</h1>
+        <p className="ricoz-eyebrow">Insights</p>
+        <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Reports &amp; analytics</h1>
       </div>
 
       {error && <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:border dark:border-red-200 dark:bg-transparent">{error}</div>}

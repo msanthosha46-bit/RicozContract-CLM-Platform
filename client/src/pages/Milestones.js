@@ -178,8 +178,8 @@ const Milestones = () => {
         <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#1d4ed8]"><Flag className="h-6 w-6" /></div>
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Contract lifecycle</p>
-            <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Milestones</h1>
+            <p className="ricoz-eyebrow">Contract lifecycle</p>
+            <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Milestones</h1>
             <p className="mt-2 text-slate-500">Give each agreement a visible path from kickoff to completion.</p>
           </div>
         </div>

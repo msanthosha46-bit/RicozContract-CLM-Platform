@@ -226,6 +226,35 @@
 }
 
 /* ------------------------------------------------------------------ *
+ * Section eyebrow
+ *
+ * The small uppercase label that sits above a page `<h1>` ("Account
+ * workspace", "Contract lifecycle", ...). This was previously spelled out as
+ * `text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]` on
+ * every page, and the arbitrary `#1d4ed8` (blue-700) escaped the light-mode
+ * rules below -- which only remap the `text-blue-*` utilities -- so the
+ * headings rendered blue and clashed with the Ricoz red accent.
+ *
+ * Owning the treatment in one class means the twelve call sites cannot drift
+ * apart in size, tracking, or colour again. The colour reads
+ * `--rz-text-strong`, which is dark navy (#0f1d3a) on the light theme and a
+ * readable near-white (#f1f5f9) on the dark one, so no `dark:` variant is
+ * needed. Red stays reserved for accents elsewhere on the page.
+ *
+ * The gap to the heading below lives here too, which is why the sibling
+ * `<h1>` elements no longer carry their own `mt-*`.
+ * ------------------------------------------------------------------ */
+.ricoz-eyebrow {
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.2em;
+	color: var(--rz-text-strong);
+	margin-bottom: 0.75rem;
+}
+
+/* ------------------------------------------------------------------ *
  * Mobile
  * ------------------------------------------------------------------ */
 @media (max-width: 767px) {

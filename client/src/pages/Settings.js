@@ -42,8 +42,8 @@ const Settings = () => {
     <div className="space-y-8">
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">System</p>
-        <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Settings</h1>
+        <p className="ricoz-eyebrow">System</p>
+        <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Settings</h1>
       </div>
 
       <div className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">

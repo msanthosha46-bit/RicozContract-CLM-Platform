@@ -45,8 +45,8 @@ const UserManagement = () => {
     <div className="space-y-8">
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Admin</p>
-        <h1 className="mt-3 text-4xl font-black tracking-[-0.06em] text-[#0f172a]">User management</h1>
+        <p className="ricoz-eyebrow">Admin</p>
+        <h1 className="text-4xl font-black tracking-[-0.06em] text-[#0f172a]">User management</h1>
       </div>
 
       {error && <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}

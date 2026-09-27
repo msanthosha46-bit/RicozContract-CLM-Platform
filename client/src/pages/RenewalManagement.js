@@ -87,8 +87,8 @@ const RenewalManagement = () => {
     <div className="space-y-8">
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Lifecycle</p>
-        <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Renewal management</h1>
+        <p className="ricoz-eyebrow">Lifecycle</p>
+        <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Renewal management</h1>
         <p className="mt-2 text-slate-500">Stay ahead of every expiring agreement with 30/60/90-day reminders and a full renewal trail.</p>
       </div>
 

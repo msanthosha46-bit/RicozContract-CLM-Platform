@@ -96,8 +96,8 @@ const EditContract = () => {
 
   return (
     <div className="mx-auto max-w-4xl rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
-      <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Contract workspace</p>
-      <h1 className="mt-3 mb-6 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Edit contract</h1>
+      <p className="ricoz-eyebrow">Contract workspace</p>
+      <h1 className="mb-6 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Edit contract</h1>
       {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       <form onSubmit={handleSubmit} className="space-y-4">

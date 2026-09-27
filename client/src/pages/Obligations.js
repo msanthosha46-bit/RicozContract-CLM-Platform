@@ -171,8 +171,8 @@ const Obligations = () => {
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#1d4ed8]">Compliance workspace</p>
-          <h1 className="mt-3 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Obligations</h1>
+          <p className="ricoz-eyebrow">Compliance workspace</p>
+          <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Obligations</h1>
           <p className="mt-2 text-slate-500">Track every promise, owner, and deadline before it becomes a risk.</p>
         </div>
         {canManage ? (
