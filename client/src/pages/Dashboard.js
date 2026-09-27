@@ -94,8 +94,8 @@ const Dashboard = () => {
     <div className="space-y-7">
       <section className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#d51d29]">Overview</p>
-          <h1 className="mt-3 text-4xl font-black tracking-[-0.07em] text-[#0f1d3a] md:text-5xl">Contract overview</h1>
+          <p className="ricoz-eyebrow">Overview</p>
+          <h1 className="text-4xl font-black tracking-[-0.07em] text-[#0f1d3a] md:text-5xl">Contract overview</h1>
           <p className="mt-2 text-lg text-slate-500">Track live agreements, approvals, and upcoming expiries.</p>
         </div>
         <div className="flex gap-3">

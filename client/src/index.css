@@ -235,11 +235,14 @@
  * rules below -- which only remap the `text-blue-*` utilities -- so the
  * headings rendered blue and clashed with the Ricoz red accent.
  *
- * Owning the treatment in one class means the twelve call sites cannot drift
- * apart in size, tracking, or colour again. The colour reads
- * `--rz-text-strong`, which is dark navy (#0f1d3a) on the light theme and a
- * readable near-white (#f1f5f9) on the dark one, so no `dark:` variant is
- * needed. Red stays reserved for accents elsewhere on the page.
+ * Owning the treatment in one class means the thirteen call sites cannot
+ * drift apart in size, tracking, or colour again.
+ *
+ * The colour is the Ricoz brand red, matching the dashboard's "Overview"
+ * label: #d51d29 on the light theme, softened to #ff8a90 on the dark one so
+ * it stays legible against a near-black surface. Those are the same two
+ * values the `text-[#d51d29]` dark override uses further down, so the
+ * headings and the buttons beside them read as one accent.
  *
  * The gap to the heading below lives here too, which is why the sibling
  * `<h1>` elements no longer carry their own `mt-*`.
@@ -250,8 +253,12 @@
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.2em;
-	color: var(--rz-text-strong);
+	color: #d51d29;
 	margin-bottom: 0.75rem;
+}
+
+.dark .ricoz-eyebrow {
+	color: #ff8a90;
 }
 
 /* ------------------------------------------------------------------ *

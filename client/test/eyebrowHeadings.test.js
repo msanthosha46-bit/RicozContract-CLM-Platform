@@ -43,8 +43,9 @@ test('the section headings all use the shared class', () => {
   const expected = [
     'ActivityLog.js',
     'ApprovalRequests.js',
-    'CreateContract.js',
     'ContractsList.js',
+    'CreateContract.js',
+    'Dashboard.js',
     'EditContract.js',
     'Milestones.js',
     'Obligations.js',
@@ -75,24 +76,42 @@ test('the heading gap comes from the class, not a doubled margin', () => {
   }
 });
 
-test('the eyebrow colour is theme-aware, not hard-coded', () => {
-  const block = css.match(/\.ricoz-eyebrow\s*\{([^}]*)\}/);
-  assert.ok(block, '.ricoz-eyebrow is not defined in index.css');
+test('every eyebrow uses the Ricoz brand red, softened on the dark theme', () => {
+  // Referenced to the dashboard's "Overview" label: #d51d29 on light, #ff8a90
+  // on dark. The same pair the `text-[#d51d29]` dark override uses, so the
+  // headings and the buttons beside them read as one accent.
+  const light = css.match(/\.ricoz-eyebrow\s*\{([^}]*)\}/);
+  assert.ok(light, '.ricoz-eyebrow is not defined in index.css');
+  assert.match(light[1], /color:\s*#d51d29;/, 'the light theme expects the brand red');
+  assert.doesNotMatch(light[1], /text-\[#1d4ed8\]|text-blue-/, 'the blue is gone from the definition');
 
-  assert.match(
-    block[1],
-    /color:\s*var\(--rz-text-strong\)/,
-    'the eyebrow must read a token so light and dark stay in step'
-  );
-  assert.doesNotMatch(block[1], /text-\[#1d4ed8\]|text-blue-/, 'the blue is gone from the definition');
+  const dark = css.match(/\.dark \.ricoz-eyebrow\s*\{([^}]*)\}/);
+  assert.ok(dark, '.ricoz-eyebrow has no dark-theme colour');
+  assert.match(dark[1], /color:\s*#ff8a90;/, 'the dark theme needs a legible red');
 });
 
-test('--rz-text-strong is dark navy on light and near-white on dark', () => {
-  const light = css.match(/:root\s*\{([^}]*)\}/)[1].match(/--rz-text-strong:\s*([^;]+);/);
-  const dark = css.match(/\.dark\s*\{([^}]*)\}/)[1].match(/--rz-text-strong:\s*([^;]+);/);
+test('no page hand-rolls a section heading above its <h1>', () => {
+  // The dashboard label used to be the one heading left as raw utilities. Catch
+  // an eyebrow only where it actually is one -- a static tracked uppercase
+  // label sitting directly above a page <h1>.
+  //
+  // Two near misses are deliberately out of scope: the landing mockup's muted
+  // "Workspace" caption, and the contract number on the detail screen. Both are
+  // dynamic or decorative rather than a workspace section label, and both size
+  // and space themselves independently of `.ricoz-eyebrow`.
+  const offenders = [];
 
-  assert.equal(light[1].trim(), '#0f1d3a', 'light mode expects dark navy');
-  assert.equal(dark[1].trim(), '#f1f5f9', 'dark mode expects a readable near-white');
+  for (const file of pageFiles()) {
+    const lines = read(file).split('\n');
+    lines.forEach((line, index) => {
+      if (!/uppercase/.test(line) || !/tracking-\[0\.\d+em\]/.test(line)) return;
+      // A label interpolating a value is a data field, not a section heading.
+      if (/>[^<]*\{/.test(line)) return;
+      if ((lines[index + 1] || '').includes('<h1')) offenders.push(`${file}:${index + 1}`);
+    });
+  }
+
+  assert.deepEqual(offenders, [], `inline eyebrow markup returned at ${offenders.join(', ')}`);
 });
 
 test('the eyebrow carries the shared typography', () => {
