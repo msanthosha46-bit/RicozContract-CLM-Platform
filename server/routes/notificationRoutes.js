@@ -3,6 +3,7 @@ const router = express.Router();
 const Contract = require('../models/Contract');
 const Approval = require('../models/Approval');
 const Obligation = require('../models/Obligation');
+const Milestone = require('../models/Milestone');
 const { protect } = require('../middleware/auth');
 const { employeeContractScope } = require('../utils/access');
 
@@ -39,6 +40,20 @@ router.get('/', protect, async (req, res, next) => {
         title: `Overdue: ${item.title}`,
         detail: item.contract?.contractNumber || 'Obligation',
         href: '/obligations'
+      });
+    });
+
+    const milestoneQuery = req.user.role === 'Employee'
+      ? { assignedTo: req.user._id, status: 'Overdue' }
+      : { status: 'Overdue' };
+    const overdueMilestones = await Milestone.find(milestoneQuery).populate('contract', 'contractNumber').limit(8);
+    overdueMilestones.forEach((item) => {
+      items.push({
+        id: `milestone-${item._id}`,
+        type: 'overdue',
+        title: `Overdue: ${item.title}`,
+        detail: item.contract?.contractNumber || 'Milestone',
+        href: '/milestones'
       });
     });
 

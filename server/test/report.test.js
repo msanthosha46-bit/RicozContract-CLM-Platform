@@ -16,6 +16,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Contract = require('../models/Contract');
 const Obligation = require('../models/Obligation');
+const Milestone = require('../models/Milestone');
 
 const reportRoutes = require('../routes/reportRoutes');
 const contractRoutes = require('../routes/contractRoutes');
@@ -225,4 +226,87 @@ test('GET /obligations no longer performs a write (overdue state is not mutated 
   assert.equal(res.status, 200);
   const after = await Obligation.findById(obligation._id);
   assert.equal(after.status, 'Pending', 'read must not silently flip overdue status');
+});
+
+test('GET /notifications includes overdue milestones', async () => {
+  const admin = await createUser({ name: 'Notif Admin', email: 'notif.admin@ricoz.test', role: 'Admin' });
+  const token = signToken(admin);
+  const contract = await makeContract({ createdBy: admin._id, assignedUser: admin._id });
+
+  await Milestone.create({
+    contract: contract._id,
+    title: 'Overdue milestone',
+    assignedTo: admin._id,
+    dueDate: new Date('2020-01-01'),
+    status: 'Overdue'
+  });
+
+  const res = await api('GET', '/api/notifications', { token });
+  assert.equal(res.status, 200);
+  assert.ok(res.data.items.some((item) => item.id.startsWith('milestone-') && item.type === 'overdue'));
+});
+
+test('GET /notifications scopes milestones to employee assignments', async () => {
+  const admin = await createUser({ name: 'Notif Admin2', email: 'notif.admin2@ricoz.test', role: 'Admin' });
+  const employee = await createUser({ name: 'Notif Employee', email: 'notif.employee@ricoz.test', role: 'Employee' });
+  const adminToken = signToken(admin);
+  const employeeToken = signToken(employee);
+
+  const adminContract = await makeContract({ createdBy: admin._id, assignedUser: admin._id });
+  const employeeContract = await makeContract({ createdBy: employee._id, assignedUser: employee._id });
+
+  await Milestone.create({
+    contract: adminContract._id,
+    title: 'Admin overdue milestone',
+    assignedTo: admin._id,
+    dueDate: new Date('2020-01-01'),
+    status: 'Overdue'
+  });
+  await Milestone.create({
+    contract: employeeContract._id,
+    title: 'Employee overdue milestone',
+    assignedTo: employee._id,
+    dueDate: new Date('2020-01-01'),
+    status: 'Overdue'
+  });
+
+  const adminRes = await api('GET', '/api/notifications', { token: adminToken });
+  assert.equal(adminRes.status, 200);
+  const adminMilestones = adminRes.data.items.filter((item) => item.id.startsWith('milestone-'));
+  assert.ok(adminMilestones.length >= 1, 'admin sees all overdue milestones');
+
+  const employeeRes = await api('GET', '/api/notifications', { token: employeeToken });
+  assert.equal(employeeRes.status, 200);
+  const employeeMilestones = employeeRes.data.items.filter((item) => item.id.startsWith('milestone-'));
+  assert.equal(employeeMilestones.length, 1, 'employee sees only their own overdue milestones');
+  assert.match(employeeMilestones[0].title, /Employee overdue milestone/);
+});
+
+test('GET /notifications includes all notification types', async () => {
+  const admin = await createUser({ name: 'Notif Admin3', email: 'notif.admin3@ricoz.test', role: 'Admin' });
+  const token = signToken(admin);
+  const contract = await makeContract({ createdBy: admin._id, assignedUser: admin._id });
+
+  await Contract.findByIdAndUpdate(contract._id, { status: 'Active', endDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000) });
+  await Obligation.create({
+    contract: contract._id,
+    title: 'Overdue obligation',
+    assignedTo: admin._id,
+    dueDate: new Date('2020-01-01'),
+    status: 'Overdue'
+  });
+  await Milestone.create({
+    contract: contract._id,
+    title: 'Overdue milestone',
+    assignedTo: admin._id,
+    dueDate: new Date('2020-01-01'),
+    status: 'Overdue'
+  });
+
+  const res = await api('GET', '/api/notifications', { token });
+  assert.equal(res.status, 200);
+  const types = res.data.items.map((item) => item.type);
+  assert.ok(types.includes('expiry'), 'includes expiry notifications');
+  assert.ok(types.includes('overdue'), 'includes overdue notifications');
+  assert.ok(res.data.count >= 3, 'count reflects multiple notification types');
 });
