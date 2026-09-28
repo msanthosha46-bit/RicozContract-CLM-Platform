@@ -8,6 +8,7 @@ import { formatDate, toDateInput, daysUntil, daysLabel } from '../utils/date';
 import { canTransitionItem, statusOptionsFor } from '../utils/itemTransitions';
 import { PageSkeleton } from '../components/Layout/Common/Skeleton';
 import EmptyState from '../components/Layout/Common/EmptyState';
+import StatusFilterChips, { filterByStatus } from '../components/Layout/Common/StatusFilterChips';
 
 // Work-item statuses are their own four-state vocabulary, deliberately
 // separate from the thirteen contract statuses in StatusBadge. Pending,
@@ -39,6 +40,7 @@ const Milestones = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const fetchMilestones = async () => {
     try {
@@ -170,10 +172,13 @@ const Milestones = () => {
 
   const total = milestones.length;
   const completed = milestones.filter((m) => m.status === 'Completed').length;
-  const overdue = milestones.filter((m) => m.status === 'Overdue').length;
-  const inProgress = milestones.filter((m) => m.status === 'In Progress').length;
-  const pending = milestones.filter((m) => m.status === 'Pending').length;
   const percent = total ? Math.round((completed / total) * 100) : 0;
+
+  // The progress bar above and the chip counts stay on the full set: they are a
+  // summary of the page, not of the current selection. Only the table narrows,
+  // and it narrows through the same helper the chips count with, so the number on
+  // a chip is always the number of rows below it.
+  const visible = filterByStatus(milestones, statusFilter);
 
   if (loading) return <PageSkeleton rows={6} columns={6} />;
 
@@ -200,30 +205,37 @@ const Milestones = () => {
       )}
 
       {total > 0 && (
-        <div className="flex flex-col gap-4 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center">
-          <div className="flex-1">
-            <div className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-2 font-semibold text-slate-800">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Milestone progress
-              </span>
-              <span className="text-slate-500">{completed} of {total} completed · {percent}%</span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-2 rounded-full bg-[#1d4ed8]" style={{ width: `${percent}%` }} />
-            </div>
+        <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-2 font-semibold text-slate-800">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Milestone progress
+            </span>
+            <span className="text-slate-500">{completed} of {total} completed · {percent}%</span>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs font-semibold">
-            {[
-              ['Pending', pending],
-              ['In Progress', inProgress],
-              ['Overdue', overdue],
-              ['Completed', completed]
-            ].map(([label, count]) => (
-              <span key={label} className={`rounded-full px-2.5 py-1 ${statusStyles[label]}`}>
-                {label} {count}
-              </span>
-            ))}
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-2 rounded-full bg-[#1d4ed8]" style={{ width: `${percent}%` }} />
           </div>
+        </div>
+      )}
+
+      {/* Replaces what were four inert count chips. They read as a filter row,
+          so they are one: a click narrows the table below and the pressed chip
+          says which one is active. */}
+      {total > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold text-slate-800">Filter</span>
+          <StatusFilterChips
+            items={milestones}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            statusStyles={statusStyles}
+            label="Filter milestones by status"
+          />
+          {statusFilter !== 'all' && (
+            <span className="text-xs text-slate-500" aria-live="polite">
+              Showing {visible.length} of {total}
+            </span>
+          )}
         </div>
       )}
 
@@ -238,6 +250,16 @@ const Milestones = () => {
                 : 'Milestones assigned to you will appear here.'
             }
             action={canManage ? <button onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-[#d51d29] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#b91c26]">New milestone</button> : undefined}
+          />
+        ) : visible.length === 0 ? (
+          /* The list is not empty, the filter is. Saying "no milestones yet"
+             here would be the same lie the dashboard used to tell on a failed
+             request: it sends the user off to create something that exists. */
+          <EmptyState
+            icon={Flag}
+            title="No milestones in this status"
+            description={`None of the ${total} milestones here are ${statusFilter}. Choose another status or show all.`}
+            action={<button onClick={() => setStatusFilter('all')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-[#d51d29] hover:text-[#d51d29]">Show all</button>}
           />
         ) : (
           /* Own scroll container: the table needs 40rem on a phone and this
@@ -255,7 +277,7 @@ const Milestones = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {milestones.map((milestone) => {
+              {visible.map((milestone) => {
                 const days = daysUntil(milestone.dueDate);
                 return (
                   <tr key={milestone._id} className="transition hover:bg-[#f8fafc]">

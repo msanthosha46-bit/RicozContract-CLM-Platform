@@ -6,6 +6,25 @@ const Milestone = require('../models/Milestone');
 const Renewal = require('../models/Renewal');
 const { protect, authorize } = require('../middleware/auth');
 const { employeeContractScope } = require('../utils/access');
+const { VALID_STATUSES } = require('../utils/contractTransitions');
+const { expiringWindow, EXPIRING_STATUSES } = require('../utils/dateWindow');
+
+// `$group` output order is whatever the server feels like, which made the
+// dashboard bar chart and the two Reports tables reshuffle between requests
+// for identical data. Statuses are sorted into lifecycle order (the same order
+// as VALID_STATUSES) and types by descending count, then alphabetically.
+const LIFECYCLE_ORDER = new Map([...VALID_STATUSES].map((status, index) => [status, index]));
+
+const sortByStatus = (rows) =>
+  [...rows].sort((a, b) => {
+    const aIndex = LIFECYCLE_ORDER.has(a._id) ? LIFECYCLE_ORDER.get(a._id) : LIFECYCLE_ORDER.size;
+    const bIndex = LIFECYCLE_ORDER.has(b._id) ? LIFECYCLE_ORDER.get(b._id) : LIFECYCLE_ORDER.size;
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    return String(a._id).localeCompare(String(b._id));
+  });
+
+const sortByCount = (rows) =>
+  [...rows].sort((a, b) => (b.count - a.count) || String(a._id).localeCompare(String(b._id)));
 
 router.get('/summary', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
   try {
@@ -19,16 +38,15 @@ router.get('/summary', protect, authorize('Admin', 'Manager'), async (req, res, 
       Obligation.countDocuments({ status: 'Overdue' }),
       Milestone.countDocuments({ status: 'Overdue' }),
       Renewal.countDocuments(),
-      (() => {
-        const now = new Date();
-        const in30Days = new Date();
-        in30Days.setDate(now.getDate() + 30);
-        return Contract.countDocuments({
-          endDate: { $gte: now, $lte: in30Days },
-          status: 'Active',
-          isArchived: false
-        });
-      })(),
+      // Same population the renewal screen lists: Active and Approved
+      // contracts inside a 30-day UTC calendar window. Counting only Active
+      // contracts here made the dashboard's "Expiring soon" lower than the
+      // renewal list it links to.
+      Contract.countDocuments({
+        endDate: expiringWindow(30),
+        status: { $in: EXPIRING_STATUSES },
+        isArchived: false
+      }),
       Contract.aggregate([
         { $match: { isArchived: false } },
         { $group: { _id: '$status', count: { $sum: 1 } } }
@@ -44,8 +62,8 @@ router.get('/summary', protect, authorize('Admin', 'Manager'), async (req, res, 
         total, draft, pending, active, expiringSoon, expired, completed,
         overdueObligations, overdueMilestones, renewals
       },
-      statusBreakdown,
-      typeBreakdown
+      statusBreakdown: sortByStatus(statusBreakdown),
+      typeBreakdown: sortByCount(typeBreakdown)
     });
   } catch (error) {
     next(error);
@@ -55,7 +73,9 @@ router.get('/summary', protect, authorize('Admin', 'Manager'), async (req, res, 
 // Dashboard endpoint: single scoped aggregation available to every role so the
 // values rendered on the Dashboard always match the Contracts page for the
 // same user (Admin/Manager see the whole repository, Employees see only the
-// contracts they created or are assigned to).
+// contracts they created or are assigned to). `expiringSoon` uses the same
+// window and status set as GET /renewals/expiring (see utils/dateWindow) so
+// the figure agrees with the renewal screen it links to.
 router.get('/dashboard', protect, async (req, res, next) => {
   try {
     const scope = req.user.role === 'Employee' ? employeeContractScope(req.user._id) : {};
@@ -66,6 +86,13 @@ router.get('/dashboard', protect, async (req, res, next) => {
         { $match: baseFilter },
         {
           $facet: {
+            // Counted from the matched documents rather than summed from
+            // statusCounts, so the dashboard total is identical to the
+            // Contracts page total by construction. Summing the groups could
+            // not drift on its own, but the two came from separate queries
+            // and any future status bucket outside the lifecycle map would
+            // have been counted twice rather than once.
+            total: [{ $count: 'value' }],
             statusCounts: [
               { $group: { _id: '$status', count: { $sum: 1 } } }
             ],
@@ -83,19 +110,17 @@ router.get('/dashboard', protect, async (req, res, next) => {
           }
         }
       ]),
-      (() => {
-        const now = new Date();
-        const in30Days = new Date();
-        in30Days.setDate(now.getDate() + 30);
-        return Contract.countDocuments({
-          endDate: { $gte: now, $lte: in30Days },
-          status: 'Active',
-          isArchived: false,
-          ...scope
-        });
-      })(),
+      Contract.countDocuments({
+        endDate: expiringWindow(30),
+        status: { $in: EXPIRING_STATUSES },
+        isArchived: false,
+        ...scope
+      }),
       Contract.find(baseFilter)
-        .sort({ createdAt: -1 })
+        // _id is the tiebreaker: contracts created inside the same
+        // millisecond (a seed run, a bulk import) otherwise came back in an
+        // arbitrary order, so "recent" was not reproducible.
+        .sort({ createdAt: -1, _id: -1 })
         .limit(5)
         .select('contractNumber title status amount currency partyName type endDate')
     ]);
@@ -103,13 +128,15 @@ router.get('/dashboard', protect, async (req, res, next) => {
     const bucket = facet[0] || {};
     const statusCounts = bucket.statusCounts || [];
     const valueByCurrency = (bucket.valueByCurrency || []).map((item) => ({
-      currency: item._id,
+      // A contract saved before `currency` existed has no value here, which
+      // rendered as a blank label on the dashboard. Match the schema default.
+      currency: item._id || 'USD',
       total: item.total,
       active: item.active
     }));
 
     const statusMap = new Map(statusCounts.map((item) => [item._id, item.count]));
-    const total = statusCounts.reduce((sum, item) => sum + item.count, 0);
+    const total = (bucket.total || [])[0]?.value || 0;
 
     res.json({
       metrics: {
@@ -121,7 +148,7 @@ router.get('/dashboard', protect, async (req, res, next) => {
         expired: statusMap.get('Expired') || 0,
         completed: statusMap.get('Closed') || 0
       },
-      statusBreakdown: statusCounts,
+      statusBreakdown: sortByStatus(statusCounts),
       valueByCurrency,
       recentContracts
     });

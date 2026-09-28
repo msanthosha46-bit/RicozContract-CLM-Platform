@@ -70,3 +70,21 @@ export const reminderTier = (days) => {
   return 90;
 };
 
+// The earliest end date a contract renewal may set, as a `YYYY-MM-DD` value.
+//
+// For a contract still running this is one day past its current end date, which
+// is what the renewal dialog has always offered. For a lapsed one it is
+// tomorrow: the end date is in the past, so "current end date + 1 day" is also
+// in the past, and renewing into it would leave the contract expired. The
+// server's hourly expiry job moves Active -> Expired whenever
+// endDate < today's UTC midnight, so a renewal dated today or earlier would be
+// undone within the hour -- the user would see "renewed" and the contract would
+// silently lapse again.
+export const renewalFloorDate = (daysRemaining) => {
+  const tomorrow = new Date(Date.now() + MS_PER_DAY);
+  if (daysRemaining === null || daysRemaining === undefined) return toDateInput(tomorrow);
+  const endPlusOne = new Date(Date.now() + (daysRemaining + 1) * MS_PER_DAY);
+  return toDateInput(endPlusOne > tomorrow ? endPlusOne : tomorrow);
+};
+
+

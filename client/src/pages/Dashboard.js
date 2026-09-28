@@ -28,6 +28,16 @@ const totalLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${for
 const activeLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(r.active, r.currency)}`) : [formatCurrency(0)]);
 const outstandingLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(Math.max(r.total - r.active, 0), r.currency)}`) : [formatCurrency(0)]);
 
+// Every contract not in Active, whatever state it is in. Used to caption the
+// "outstanding" figures so the money shown is described by the same
+// population it is actually summed over.
+const notActiveCount = (metrics) => Math.max((metrics?.total || 0) - (metrics?.active || 0), 0);
+
+// Contracts sitting in a review/approval state, i.e. the ones a user can
+// actually move forward. Ordered to match the lifecycle so the queue reads
+// top to bottom.
+const IN_FLIGHT = ['Draft', 'Pending Review', 'Pending Approval', 'Approved'];
+
 const Dashboard = () => {
   const { user } = useContext(AuthContext);
   const [metrics, setMetrics] = useState(null);
@@ -81,13 +91,23 @@ const Dashboard = () => {
   const totalValue = totalLines(valueByCurrency);
   const activeValue = activeLines(valueByCurrency);
   const outstandingValue = outstandingLines(valueByCurrency);
-  const chartData = statusBreakdown.map((item) => ({ status: item._id, count: item.count }));
+  // The server returns statuses in lifecycle order; `item._id || 'Unknown'`
+  // guards a legacy document with a blank status, which would otherwise
+  // render an unlabelled bar.
+  const chartData = statusBreakdown.map((item) => ({ status: item._id || 'Unknown', count: item.count }));
+  const workflowRows = IN_FLIGHT
+    .map((status) => ({ status, count: statusBreakdown.find((item) => (item._id || 'Unknown') === status)?.count || 0 }))
+    .filter((row) => row.count > 0);
 
   const summaryCards = [
     { label: 'Total contract value', value: totalValue, detail: `${metrics?.total || 0} contracts in your repository`, icon: Layers, accent: 'border-t-[#0f1d3a]', iconColor: 'text-[#0f1d3a]' },
     { label: 'Active value', value: activeValue, detail: `${metrics?.active || 0} active contracts`, icon: CheckCircle2, accent: 'border-t-[#16a36b]', iconColor: 'text-[#16a36b]' },
-    { label: 'Outstanding value', value: outstandingValue, detail: `${metrics?.pending || 0} awaiting approval`, icon: FileText, accent: 'border-t-[#d51d29]', iconColor: 'text-[#d51d29]' },
-    { label: 'Expiring soon', value: [String(metrics?.expiringSoon || 0)], detail: 'Within the next 30 days', icon: AlertTriangle, accent: 'border-t-[#f59e0b]', iconColor: 'text-[#f59e0b]', isCount: true },
+    // Captioned by the population the figure sums over: total minus Active,
+    // which is every draft, pending, expired, renewed and closed contract.
+    // It used to read "<n> awaiting approval", a different and much smaller
+    // set than the money above it.
+    { label: 'Non-active value', value: outstandingValue, detail: `${notActiveCount(metrics)} contracts outside Active status`, icon: FileText, accent: 'border-t-[#d51d29]', iconColor: 'text-[#d51d29]' },
+    { label: 'Expiring soon', value: [String(metrics?.expiringSoon || 0)], detail: 'Active or approved, ending within 30 days', icon: AlertTriangle, accent: 'border-t-[#f59e0b]', iconColor: 'text-[#f59e0b]', isCount: true },
   ];
 
   return (
@@ -107,7 +127,7 @@ const Dashboard = () => {
       </section>
 
       {error && (
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{error}</span>
           <button onClick={fetchDashboardData} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">
             <RefreshCw className="h-3 w-3" /> Retry
@@ -115,6 +135,22 @@ const Dashboard = () => {
         </div>
       )}
 
+      {/* Without data every figure above would render as a real-looking 0,
+          which reads as "you have no contracts" rather than "we could not
+          ask". Only the panels that have something to show are rendered. */}
+      {!metrics ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <EmptyState
+            icon={AlertTriangle}
+            title={error ? 'Dashboard data unavailable' : 'No dashboard data'}
+            description={error
+              ? 'The figures could not be loaded. Use Retry above to try again.'
+              : 'Once contracts are added, your overview appears here.'}
+            action={error ? null : <Link to="/contracts" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-[#d51d29] hover:text-[#d51d29]">Browse contracts</Link>}
+          />
+        </div>
+      ) : (
+        <>
       <section>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map(({ label, value, detail, icon: Icon, accent, iconColor, isCount }) => (
@@ -134,7 +170,10 @@ const Dashboard = () => {
       <section className="grid gap-5 xl:grid-cols-[minmax(0,2.2fr)_minmax(280px,1fr)]">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-black text-[#0f1d3a]">Status breakdown</h2>
-          <p className="mt-1 text-sm text-slate-500">Counts from your current contract repository</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Counts from your current contract repository
+            {chartData.length > 0 && <span className="text-slate-400"> · {metrics?.total || 0} contracts in total</span>}
+          </p>
           <div className="mt-6 h-64">
             {chartData.length === 0 ? (
               <EmptyState title="No contract data yet" description="Once contracts are added, their status spread appears here." compact />
@@ -174,13 +213,17 @@ const Dashboard = () => {
           </div>
           <div className="mt-5 space-y-3">
             {recentContracts.slice(0, 3).map((contract) => (
-              <div key={contract._id} className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div>
-                  <p className="text-sm font-bold text-[#0f1d3a]">{contract.contractNumber}</p>
+              <Link
+                key={contract._id}
+                to={`/contracts/${contract._id}`}
+                className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3 transition last:border-0 hover:border-[#d51d29]"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-[#0f1d3a]">{contract.contractNumber}</p>
                   <StatusBadge status={contract.status} />
                 </div>
-                <span className="font-bold text-[#0f1d3a]">{formatCurrency(contract.amount, contract.currency)}</span>
-              </div>
+                <span className="shrink-0 font-bold tabular-nums text-[#0f1d3a]">{formatCurrency(contract.amount, contract.currency)}</span>
+              </Link>
             ))}
             {recentContracts.length === 0 && (
               <EmptyState
@@ -193,28 +236,24 @@ const Dashboard = () => {
           </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-black text-[#0f1d3a]">Workflow status</h2>
-              <p className="mt-1 text-sm text-slate-500">Latest agreements in motion</p>
-            </div>
-            <Link to={canViewReports ? '/approvals' : '/contracts'} className="text-sm font-bold text-[#d51d29]">View all →</Link>
-          </div>
+          <h2 className="text-xl font-black text-[#0f1d3a]">Workflow status</h2>
+          <p className="mt-1 text-sm text-slate-500">Contracts waiting on a review or approval step</p>
           <div className="mt-5 space-y-3">
-            {recentContracts.slice(0, 3).map((contract) => (
-              <div key={contract._id} className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div>
-                  <p className="text-sm font-bold text-[#0f1d3a]">{contract.title}</p>
-                  <p className="text-xs text-slate-500">{contract.partyName}</p>
-                </div>
-                <StatusBadge status={contract.status} />
-              </div>
+            {workflowRows.map(({ status, count }) => (
+              <Link
+                key={status}
+                to={`/contracts?status=${encodeURIComponent(status)}`}
+                className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3 transition last:border-0 hover:border-[#d51d29]"
+              >
+                <StatusBadge status={status} />
+                <span className="shrink-0 text-sm font-bold tabular-nums text-[#0f1d3a]">{count}</span>
+              </Link>
             ))}
-            {recentContracts.length === 0 && (
+            {workflowRows.length === 0 && (
               <EmptyState
                 compact
                 title="Nothing in motion"
-                description="Agreements awaiting review or approval appear here."
+                description="Every contract is either active, expired or closed. Nothing is waiting on a review or approval step."
                 action={<Link to="/contracts" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-[#d51d29] hover:text-[#d51d29]">Browse contracts</Link>}
               />
             )}
@@ -230,11 +269,13 @@ const Dashboard = () => {
           </div>
           <div className="mt-6 space-y-4">
             <div className="flex justify-between border-b border-slate-100 pb-4 text-sm"><span className="text-slate-500">Active</span><div className="text-right"><strong className="block text-[#0f1d3a]">{activeValue.join(' · ')}</strong></div></div>
-            <div className="flex justify-between text-sm"><span className="text-slate-500">Awaiting action</span><div className="text-right"><strong className="block text-[#d51d29]">{outstandingValue.join(' · ')}</strong></div></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-500">Outside Active</span><div className="text-right"><strong className="block text-[#d51d29]">{outstandingValue.join(' · ')}</strong></div></div>
             <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#d51d29]"><AlertTriangle className="h-4 w-4" /> {metrics?.expiringSoon || 0} contracts need attention</div>
           </div>
         </div>
       </section>
+        </>
+      )}
     </div>
   );
 };

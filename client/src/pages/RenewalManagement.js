@@ -3,7 +3,7 @@ import API from '../services/api';
 import { CalendarClock, History } from 'lucide-react';
 import Modal from '../components/Layout/Common/Modal';
 import Toast from '../components/Layout/Common/Toast';
-import { formatDate, formatDateTime, toDateInput, daysLabel, reminderTier } from '../utils/date';
+import { formatDate, formatDateTime, daysLabel, reminderTier, renewalFloorDate } from '../utils/date';
 import { PageSkeleton } from '../components/Layout/Common/Skeleton';
 import EmptyState from '../components/Layout/Common/EmptyState';
 import StatusBadge from '../components/Layout/Common/StatusBadge';
@@ -20,6 +20,7 @@ const reminderStyles = {
 
 const RenewalManagement = () => {
   const [expiringContracts, setExpiringContracts] = useState([]);
+  const [renewableContracts, setRenewableContracts] = useState([]);
   const [history, setHistory] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -33,12 +34,14 @@ const RenewalManagement = () => {
   const fetchRenewals = async () => {
     try {
       setLoading(true);
-      const [expiringRes, historyRes] = await Promise.all([
+      const [expiringRes, historyRes, renewableRes] = await Promise.all([
         API.get('/renewals/expiring'),
-        API.get('/renewals/history')
+        API.get('/renewals/history'),
+        API.get('/renewals/renewable')
       ]);
       setExpiringContracts(expiringRes.data);
       setHistory(historyRes.data);
+      setRenewableContracts(renewableRes.data);
       setError('');
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to load renewals');
@@ -77,6 +80,15 @@ const RenewalManagement = () => {
   const filtered = filter === 'all'
     ? expiringContracts
     : expiringContracts.filter((contract) => reminderTier(contract.daysRemaining) === filter);
+
+  // Everything the renewal route would accept that the reminder list above does
+  // not already show: Expired contracts (their end date is in the past, so a
+  // forward window can never match them) and Renewed ones (future end date, but
+  // a status /expiring does not select). Deduplicating against the ids already
+  // rendered keeps the two tables a partition of the eligible set rather than
+  // two overlapping views of it.
+  const listedIds = new Set(expiringContracts.map((contract) => contract._id));
+  const awaitingRenewal = renewableContracts.filter((contract) => !listedIds.has(contract._id));
 
   if (loading) {
     return <PageSkeleton rows={6} columns={7} />;
@@ -183,6 +195,82 @@ const RenewalManagement = () => {
       </div>
 
       <div>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <CalendarClock className="h-4 w-4 text-[#d51d29]" />
+          <h2 className="text-lg font-bold text-slate-800">Awaiting renewal</h2>
+          {awaitingRenewal.length > 0 && (
+            <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+              {awaitingRenewal.length}
+            </span>
+          )}
+          <p className="w-full text-sm text-slate-500 sm:w-auto sm:flex-1">
+            Contracts you can still renew that the reminder window above does not reach &mdash; an expired end date, or a state the window does not select.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
+          {awaitingRenewal.length === 0 ? (
+            <EmptyState
+              icon={CalendarClock}
+              title="Nothing lapsed awaiting renewal"
+              description="Every contract that can be renewed still has time left on it. Expired agreements appear here so they cannot be stranded."
+            />
+          ) : (
+            /* Own scroll container, as above: this table needs 34rem on a phone
+               and the parent clips overflow. */
+            <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-[#f7f7f8] text-xs uppercase tracking-[0.1em] text-slate-500">
+                <tr>
+                  <th scope="col" className="px-4 py-3 font-medium">Contract</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Party</th>
+                  <th scope="col" className="px-4 py-3 font-medium">End Date</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Elapsed</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Status</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {awaitingRenewal.map((contract) => (
+                  <tr key={contract._id} className="hover:bg-slate-50/60">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-800">{contract.title}</div>
+                      <div className="text-xs text-slate-500">{contract.contractNumber}</div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">{contract.partyName}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(contract.endDate)}</td>
+                    <td className="px-4 py-3">
+                      {/* The server's own tier, coloured exactly as the reminder
+                          table above, rather than an unconditional red: a
+                          forward-dated Expired contract is not overdue and must
+                          not be painted as if it were. */}
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${reminderStyles[contract.reminder] || 'rz-pill rz-unknown'}`}>
+                        {daysLabel(contract.daysRemaining)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={contract.status} />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => openRenew(contract)}
+                        aria-label={`Renew ${contract.contractNumber}`}
+                        className="inline-flex items-center gap-2 rounded-xl bg-[#0f172a] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1e293b]"
+                      >
+                        <CalendarClock className="h-3.5 w-3.5" /> Renew
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div>
         <div className="mb-3 flex items-center gap-2">
           <History className="h-4 w-4 text-[#1d4ed8]" />
           <h2 className="text-lg font-bold text-slate-800">Renewal history</h2>
@@ -249,12 +337,12 @@ const RenewalManagement = () => {
             <input
               required
               type="date"
-              min={toDateInput(new Date(Date.now() + (selected ? selected.daysRemaining + 1 : 1) * 86400000))}
+              min={renewalFloorDate(selected?.daysRemaining)}
               value={newEndDate}
               onChange={(event) => setNewEndDate(event.target.value)}
               className="mt-2 w-full rounded-xl border border-slate-200 p-3"
             />
-            {selected && <span className="mt-1 block text-xs text-slate-400">Current end date: {formatDate(selected.endDate)} ({daysLabel(selected.daysRemaining)}). Must be later than the current end date.</span>}
+            {selected && <span className="mt-1 block text-xs text-slate-400">Current end date: {formatDate(selected.endDate)} ({daysLabel(selected.daysRemaining)}). Must be later than the current end date{selected.daysRemaining < 0 ? ', and not in the past, or the contract would expire again immediately' : ''}.</span>}
           </label>
           <textarea placeholder="Notes" value={notes} onChange={(event) => setNotes(event.target.value)} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
         </form>

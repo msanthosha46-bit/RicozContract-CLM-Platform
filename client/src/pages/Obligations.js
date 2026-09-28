@@ -8,6 +8,7 @@ import { formatDate, toDateInput, daysUntil, daysLabel } from '../utils/date';
 import { canTransitionItem, statusOptionsFor } from '../utils/itemTransitions';
 import { PageSkeleton } from '../components/Layout/Common/Skeleton';
 import EmptyState from '../components/Layout/Common/EmptyState';
+import StatusFilterChips, { filterByStatus } from '../components/Layout/Common/StatusFilterChips';
 import { ClipboardCheck } from 'lucide-react';
 
 // Work-item statuses are their own four-state vocabulary, deliberately
@@ -40,6 +41,7 @@ const Obligations = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const fetchObligations = async () => {
     try {
@@ -168,6 +170,13 @@ const Obligations = () => {
     return actions;
   };
 
+  const total = obligations.length;
+  // The counts behind the chips come from the full list, so narrowing the table
+  // never collapses the other chips to zero and strands the user in a filter.
+  // The same helper the chips count with decides the rows, so a chip's count and
+  // the number of rows beneath it cannot disagree.
+  const visible = filterByStatus(obligations, statusFilter);
+
   if (loading) {
     return <PageSkeleton rows={6} columns={6} />;
   }
@@ -195,6 +204,24 @@ const Obligations = () => {
         </div>
       )}
 
+      {total > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold text-slate-800">Filter</span>
+          <StatusFilterChips
+            items={obligations}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            statusStyles={statusStyles}
+            label="Filter obligations by status"
+          />
+          {statusFilter !== 'all' && (
+            <span className="text-xs text-slate-500" aria-live="polite">
+              Showing {visible.length} of {total}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
         {obligations.length === 0 ? (
           <EmptyState
@@ -206,6 +233,15 @@ const Obligations = () => {
                 : 'Obligations assigned to you will appear here.'
             }
             action={canManage ? <button onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-[#d51d29] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#b91c26]">New obligation</button> : undefined}
+          />
+        ) : visible.length === 0 ? (
+          /* Obligations exist, this status does not. Reporting "no obligations
+             yet" would send the user to create something already on record. */
+          <EmptyState
+            icon={ClipboardCheck}
+            title="No obligations in this status"
+            description={`None of the ${total} obligations here are ${statusFilter}. Choose another status or show all.`}
+            action={<button onClick={() => setStatusFilter('all')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-[#d51d29] hover:text-[#d51d29]">Show all</button>}
           />
         ) : (
           /* Own scroll container: the table needs 40rem on a phone and this
@@ -223,7 +259,7 @@ const Obligations = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {obligations.map((ob) => {
+              {visible.map((ob) => {
                 const days = daysUntil(ob.dueDate);
                 return (
                   <tr key={ob._id} className="transition hover:bg-[#f8fafc]">

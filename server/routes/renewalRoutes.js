@@ -5,22 +5,10 @@ const Contract = require('../models/Contract');
 const Renewal = require('../models/Renewal');
 const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
-const { canRenewContract } = require('../utils/contractTransitions');
+const { canRenewContract, RENEWABLE_FROM } = require('../utils/contractTransitions');
+const { expiringWindow, daysRemainingBetween, EXPIRING_STATUSES } = require('../utils/dateWindow');
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const WINDOWS = ['30', '60', '90'];
-
-// Contract end dates are calendar dates (UTC midnight when set from a date
-// picker). All windowing and day arithmetic is done in UTC calendar days so a
-// contract that expires "today" is never reported as -1 or missing by users in
-// negative-UTC timezones.
-const startOfUtcDay = (value) => {
-  const d = new Date(value);
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-};
-
-const daysRemainingBetween = (fromValue, toValue) =>
-  Math.round((startOfUtcDay(toValue) - startOfUtcDay(fromValue)) / MS_PER_DAY);
 
 // Tightest reminder tier a contract falls into: a contract expiring in 45 days
 // is a 60-day reminder, in 12 days a 30-day reminder.
@@ -30,6 +18,12 @@ const reminderFor = (daysRemaining) => {
   return 90;
 };
 
+// Contract end dates are calendar dates (UTC midnight when set from a date
+// picker). All windowing and day arithmetic is done in UTC calendar days so a
+// contract that expires "today" is never reported as -1 or missing by users in
+// negative-UTC timezones. The helpers live in utils/dateWindow.js because the
+// report endpoints count the same population and must not drift from it.
+
 router.get('/expiring', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
   try {
     const windowParam = req.query.window === undefined ? '90' : String(req.query.window);
@@ -38,24 +32,58 @@ router.get('/expiring', protect, authorize('Admin', 'Manager'), async (req, res,
     }
     const windowDays = Number(windowParam);
 
-    const today = new Date(startOfUtcDay(new Date()));
-    // Include contracts expiring on the current UTC day (daysRemaining 0) and
-    // everything through the end of today + window; the upper bound is
-    // exclusive so date-only (UTC-midnight) end dates land in the right tier.
-    const windowStart = today;
-    const windowEnd = new Date(today.getTime() + (windowDays + 1) * MS_PER_DAY);
-
     const contracts = await Contract.find({
       isArchived: false,
-      endDate: { $gte: windowStart, $lt: windowEnd },
-      status: { $in: ['Active', 'Approved'] }
-    }).sort({ endDate: 1 });
+      endDate: expiringWindow(windowDays),
+      status: { $in: EXPIRING_STATUSES }
+    }).sort({ endDate: 1, _id: 1 });
 
     const payload = contracts.map((contract) => {
       const daysRemaining = daysRemainingBetween(new Date(), contract.endDate);
       return {
         ...contract.toObject(),
         daysRemaining,
+        reminder: reminderFor(daysRemaining)
+      };
+    });
+
+    res.json(payload);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// The complete eligibility queue: every contract the renewal route would
+// actually accept, regardless of when it ends.
+//
+// `/expiring` answers "what needs a reminder soon", so it is necessarily a
+// forward-looking window over Active/Approved. That made two states the
+// business rules permit unreachable: `Expired` (its end date is by definition
+// in the past, so it can never match a forward window) and `Renewed` (a
+// future end date, but a status the expiring list does not select). Since
+// expireEligibleContracts() flips Active -> Expired every hour, contracts
+// landed in `Expired` on a timer and could then never be renewed through the
+// UI even though canRenewContract('Expired') is true and POST /renew/:id
+// accepts them.
+//
+// This endpoint is the safety net that closes that loop: it selects on
+// eligibility rather than on proximity, so the union of it and `/expiring`
+// covers every state canRenewContract permits. Same guards as the rest of the
+// renewal surface, and `lapsed` is derived rather than trusted from the client
+// so the two lists partition cleanly on endDate.
+router.get('/renewable', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
+  try {
+    const contracts = await Contract.find({
+      isArchived: false,
+      status: { $in: [...RENEWABLE_FROM] }
+    }).sort({ endDate: 1, _id: 1 });
+
+    const payload = contracts.map((contract) => {
+      const daysRemaining = daysRemainingBetween(new Date(), contract.endDate);
+      return {
+        ...contract.toObject(),
+        daysRemaining,
+        lapsed: daysRemaining < 0,
         reminder: reminderFor(daysRemaining)
       };
     });

@@ -246,8 +246,11 @@ test('reminderTier boundaries still match the chip tiers', () => {
 });
 
 test('an unrecognised reminder falls back to the shared unknown pill', () => {
+  // Two chips on the reminder table, plus one on the awaiting-renewal table
+  // added in phase 8. The count is a floor, not an exact total -- what matters
+  // is that *every* chip carries the fallback, which the loop below checks.
   const uses = renewal.match(/reminderStyles\[[^\]]+\] \|\| '([^']+)'/g) || [];
-  assert.equal(uses.length, 2, 'both reminder chips should have a fallback');
+  assert.ok(uses.length >= 2, 'the reminder chips should have fallbacks');
   for (const use of uses) {
     assert.match(use, /\|\| 'rz-pill rz-unknown'/);
   }
@@ -258,7 +261,7 @@ test('the reminder chips stay borderless so all three tiers match', () => {
     assert.doesNotMatch(cls, /rz-pill/, `${cls} should not request a border`);
   }
   const chips = renewal.split('\n').filter((l) => l.includes('rounded-full') && l.includes('reminderStyles['));
-  assert.equal(chips.length, 2, 'expected the Days Remaining and Reminder chips');
+  assert.ok(chips.length >= 2, 'expected the Days Remaining and Reminder chips');
   for (const chip of chips) {
     const before = chip.slice(0, chip.indexOf('reminderStyles['));
     assert.doesNotMatch(before, /\bborder\b/, 'a chip gained a border');

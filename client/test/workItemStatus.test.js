@@ -19,7 +19,9 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const PAGES = path.join(__dirname, '..', 'src', 'pages');
+const COMMON = path.join(__dirname, '..', 'src', 'components', 'Layout', 'Common');
 const read = (f) => fs.readFileSync(path.join(PAGES, f), 'utf8');
+const readCommon = (f) => fs.readFileSync(path.join(COMMON, f), 'utf8');
 const milestones = read('Milestones.js');
 const obligations = read('Obligations.js');
 const statusBadge = fs.readFileSync(
@@ -146,18 +148,37 @@ test('the known work-item chips stay borderless so they match their siblings', (
   }
 });
 
-test('the Milestones summary chips are driven by statusStyles', () => {
+test('the status filter chips are driven by statusStyles, not hardcoded colours', () => {
   // The counts row used to hardcode four colours inline, which is exactly how
-  // In Progress drifted away from the badge beside it.
-  const start = milestones.indexOf('flex flex-wrap gap-2 text-xs font-semibold');
-  assert.notEqual(start, -1, 'the summary chip row is missing');
-  const row = milestones.slice(start, milestones.indexOf('</div>', start));
-  assert.match(row, /statusStyles\[label\]/, 'the chips should look their colour up');
-  for (const label of ['Pending', 'In Progress', 'Overdue', 'Completed']) {
-    assert.match(row, new RegExp(`'${label}',\\s*\\w+\\]`), `${label} count is missing`);
+  // In Progress drifted away from the badge beside it. It has since become a
+  // real filter, and the chips moved into the shared StatusFilterChips
+  // component -- so the guarantee this test protects now lives there. The pages
+  // must not grow a second, hardcoded chip row alongside it.
+  const chips = readCommon('StatusFilterChips.js');
+
+  // The colour must come from a lookup keyed on the status, with the unknown
+  // fallback. Matched on the lookup itself rather than on the name of the local
+  // it hangs off, so renaming that local is not a test failure.
+  assert.match(chips, /\w+\[status\] \|\| 'rz-pill rz-unknown'/, 'the chips should look their colour up');
+  // No status hue may be hardcoded in the chip component: that is the exact
+  // drift this test exists to catch.
+  assert.doesNotMatch(chips, /bg-(blue|amber|emerald|red)-/, 'a hardcoded chip colour survived');
+  // The All chip is the one label with no statusStyles entry, so it carries a
+  // literal. It must be a hex the dark-mode override block does not rewrite:
+  // index.css maps .text-slate-700 to a light body colour under .dark while
+  // leaving the background alone, which would be unreadable.
+  const allChip = chips.match(/value: ALL[\s\S]*?style: '([^']+)'/);
+  assert.ok(allChip, 'the All chip is missing');
+  assert.doesNotMatch(allChip[1], /bg-slate/, `the All chip uses a rewritten fill: ${allChip[1]}`);
+  assert.doesNotMatch(allChip[1], /text-slate/, `the All chip uses a rewritten text colour: ${allChip[1]}`);
+
+  for (const [name, source] of [['Milestones', milestones], ['Obligations', obligations]]) {
+    // The pages must not grow a second, inline chip row that could drift from
+    // the shared one. (Their blue action buttons are meant to stay blue, so
+    // the colour sweep above deliberately runs against the component only.)
+    assert.doesNotMatch(source, /statusStyles\[label\]/, `${name} grew a second inline chip row`);
+    assert.match(source, /<StatusFilterChips/, `${name} does not render the chip filter`);
   }
-  assert.doesNotMatch(row, /bg-blue-100/, 'a blue chip survived in the summary row');
-  assert.doesNotMatch(row, /bg-(amber|emerald|red)-100/, 'a hardcoded chip colour survived');
 });
 
 test('the Start / Reopen action buttons stay blue', () => {
