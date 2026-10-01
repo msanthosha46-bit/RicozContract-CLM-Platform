@@ -18,15 +18,16 @@ import EmptyState from '../components/Layout/Common/EmptyState';
 
 const currencyLocale = (currency) => (currency === 'INR' ? 'en-IN' : 'en-US');
 
-const formatCurrency = (value, currency = 'USD') => {
+const formatCurrency = (value, currency) => {
   const safe = Number(value) || 0;
+  if (!currency) return safe.toLocaleString();
   const locale = currencyLocale(currency);
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(safe);
 };
 
-const totalLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(r.total, r.currency)}`) : [formatCurrency(0)]);
-const activeLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(r.active, r.currency)}`) : [formatCurrency(0)]);
-const outstandingLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(Math.max(r.total - r.active, 0), r.currency)}`) : [formatCurrency(0)]);
+const totalLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(r.total, r.currency)}`) : ['—']);
+const activeLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(r.active, r.currency)}`) : ['—']);
+const outstandingLines = (rows) => (rows.length ? rows.map((r) => `${r.currency} ${formatCurrency(Math.max(r.total - r.active, 0), r.currency)}`) : ['—']);
 
 // Every contract not in Active, whatever state it is in. Used to caption the
 // "outstanding" figures so the money shown is described by the same

@@ -233,6 +233,13 @@ test('a failed Dashboard request does not render the figures as zeroes', () => {
   assert.match(dashboard, /onClick=\{fetchDashboardData\}/, 'the retry button is gone');
 });
 
+test('empty dashboard currency groups do not assume USD', () => {
+  assert.match(dashboard, /const formatCurrency = \(value, currency\) =>/);
+  assert.match(dashboard, /if \(!currency\) return safe\.toLocaleString\(\)/);
+  assert.doesNotMatch(dashboard, /formatCurrency\(0\)/);
+  assert.equal((dashboard.match(/: \['—'\]/g) || []).length, 3);
+});
+
 test('a successful reload replaces the error banner', () => {
   // Both pages clear `error` at the top of the fetch, before the request.
   for (const [name, src] of [['Reports', reports], ['Dashboard', dashboard]]) {
