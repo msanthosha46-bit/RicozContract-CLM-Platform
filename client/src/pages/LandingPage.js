@@ -130,6 +130,18 @@ const LandingPage = () => {
     };
   }, [menuOpen]);
 
+  useEffect(() => {
+    const targetId = window.location.hash.slice(1);
+    if (!targetId) return;
+    const target = document.getElementById(targetId);
+    if (!target) return;
+
+    const scrollBehavior = document.documentElement.style.scrollBehavior;
+    document.documentElement.style.scrollBehavior = 'auto';
+    target.scrollIntoView({ block: 'start' });
+    document.documentElement.style.scrollBehavior = scrollBehavior;
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#f4f6f9] text-[#111827] dark:bg-[#0b1220] dark:text-slate-200">
       <a href="#main" className="ricoz-skip-link">Skip to content</a>
@@ -343,7 +355,7 @@ const LandingPage = () => {
         <section id="how-it-works" className="mt-16 scroll-mt-24 sm:mt-20">
           <div className="flex flex-col items-center text-center">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#d51d29] dark:text-[#ff8a90]">How it works</p>
-            <h2 className="mt-3 text-2xl font-black tracking-[-0.04em] text-[#0f172a] sm:text-3xl md:text-4xl">
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.04em] text-[#0f172a] sm:text-3xl md:text-4xl dark:text-slate-50">
               From draft to renewal, in three steps.
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-[#64748b] sm:text-base dark:text-slate-400">
@@ -374,7 +386,7 @@ const LandingPage = () => {
         <section id="features" className="mt-16 scroll-mt-24 sm:mt-20">
           <div className="flex flex-col items-center text-center">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#d51d29] dark:text-[#ff8a90]">Features</p>
-            <h2 className="mt-3 text-2xl font-black tracking-[-0.04em] text-[#0f172a] sm:text-3xl md:text-4xl">
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.04em] text-[#0f172a] sm:text-3xl md:text-4xl dark:text-slate-50">
               Everything a contract needs, nothing it does not.
             </h2>
           </div>
