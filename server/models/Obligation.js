@@ -12,5 +12,12 @@ const obligationSchema = new mongoose.Schema({
 obligationSchema.index({ status: 1 });
 obligationSchema.index({ assignedTo: 1, status: 1 });
 obligationSchema.index({ dueDate: 1 });
+// GET /api/obligations is `filter by assignee (Employee) or nothing
+// (Admin/Manager), sorted by dueDate ascending`, and the overdue notification
+// feed adds `status: 'Overdue'` to the same assignee filter. The compound keys
+// below match filter + sort so the query is index-served instead of filtering
+// and then blocking-sorting every obligation in the collection.
+obligationSchema.index({ assignedTo: 1, dueDate: 1 });
+obligationSchema.index({ status: 1, dueDate: 1 });
 
 module.exports = mongoose.model('Obligation', obligationSchema);

@@ -407,3 +407,6 @@ module.exports = SupabaseStorageAdapter;
 module.exports.SUPABASE_BACKEND = SUPABASE_BACKEND;
 module.exports.LOCAL_BACKEND = LOCAL_BACKEND;
 module.exports.RETIRED_BACKENDS = RETIRED_BACKENDS;
+// Exported so the pre-deploy check asserts the names this adapter actually
+// reads, rather than a hand-copied list that can drift away from them.
+module.exports.REQUIRED_ENV = REQUIRED_ENV;

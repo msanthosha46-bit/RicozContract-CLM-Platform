@@ -45,6 +45,12 @@ let employeeToken; // token issued before the password reset
 const originalSendPasswordResetEmail = mailer.sendPasswordResetEmail;
 const originalVerifyGoogleIdToken = googleAuth.verifyGoogleIdToken;
 
+// Stands in for the mailer so no email is ever sent from a test: the link that
+// would have been emailed is captured instead.
+const captureResetLink = async ({ resetLink }) => {
+  capturedResetLink = resetLink;
+};
+
 const api = async (method, url, { body, token } = {}) => {
   const headers = { 'content-type': 'application/json' };
   if (token) headers.authorization = `Bearer ${token}`;
@@ -90,9 +96,7 @@ test.before(async () => {
   baseURL = `http://127.0.0.1:${server.address().port}`;
 
   // Capture the reset link instead of sending real email during tests.
-  mailer.sendPasswordResetEmail = async ({ resetLink }) => {
-    capturedResetLink = resetLink;
-  };
+  mailer.sendPasswordResetEmail = captureResetLink;
 });
 
 test.after(async () => {

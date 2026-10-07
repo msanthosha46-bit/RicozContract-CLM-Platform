@@ -56,6 +56,7 @@ const Settings = () => {
                 type="button"
                 onClick={() => toggle(row.key)}
                 aria-pressed={preferences[row.key]}
+                aria-label={row.label}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${preferences[row.key] ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}
               >
                 {preferences[row.key] ? 'Enabled' : 'Disabled'}

@@ -6,6 +6,21 @@
 		<meta name="theme-color" content="#0f172a" />
 		<meta name="description" content="RicozContract contract lifecycle management" />
 		<title>RicozContract</title>
+		<script>
+			(function () {
+				// Paint the stored or system theme before first render, so the
+				// dark-mode surfaces are there from the first frame instead of
+				// flashing light. Mirrors applyTheme() in ThemeContext.js.
+				try {
+					var stored = localStorage.getItem('ricoz_theme');
+					var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+					if (dark) {
+						document.documentElement.classList.add('dark');
+						document.documentElement.style.colorScheme = 'dark';
+					}
+				} catch (err) {}
+			})();
+		</script>
 	</head>
 	<body>
 		<noscript>You need to enable JavaScript to run this app.</noscript>

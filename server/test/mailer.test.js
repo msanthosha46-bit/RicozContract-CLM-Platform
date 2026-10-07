@@ -3,56 +3,16 @@
 // rendered by a real Nodemailer stream transport so the library's own address
 // parsing and header generation are exercised. Nothing is sent over the
 // network and no credential value is ever logged.
+//
+// withSmtpEnv also clears RESEND_API_KEY, so these tests always exercise the
+// SMTP path alone even when the developer running them has a real key exported.
+// The Resend transport is covered by emailTransport.test.js.
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const nodemailer = require('nodemailer');
 
 const mailer = require('../utils/mailer');
-
-const SMTP_VARS = [
-  'SMTP_HOST',
-  'SMTP_PORT',
-  'SMTP_SECURE',
-  'SMTP_USER',
-  'SMTP_PASSWORD',
-  'EMAIL_FROM'
-];
-
-// Runs fn with the given SMTP environment, restoring the previous values after.
-const withSmtpEnv = (env, fn) => {
-  const saved = {};
-  for (const name of SMTP_VARS) {
-    saved[name] = process.env[name];
-    if (env[name] === undefined) delete process.env[name];
-    else process.env[name] = env[name];
-  }
-  const restore = () => {
-    for (const name of SMTP_VARS) {
-      if (saved[name] === undefined) delete process.env[name];
-      else process.env[name] = saved[name];
-    }
-  };
-  try {
-    const result = fn();
-    if (result && typeof result.then === 'function') {
-      return result.then(
-        (value) => {
-          restore();
-          return value;
-        },
-        (error) => {
-          restore();
-          throw error;
-        }
-      );
-    }
-    restore();
-    return result;
-  } catch (error) {
-    restore();
-    throw error;
-  }
-};
+const { withEmailEnv: withSmtpEnv } = require('./helpers/emailEnv');
 
 // A real Nodemailer transport that renders the message to a buffer instead of
 // delivering it, so the library's real parsing/encoding path is used.

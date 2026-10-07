@@ -42,10 +42,15 @@ router.post('/submit/:contractId', protect, async (req, res, next) => {
   }
 });
 
-// Get pending approvals list
+// Get pending approvals list. Only approvals whose contract is still in
+// 'Pending Approval' (and not archived) are listed, because those are the only
+// ones the decision route can act on. A contract whose status was changed away
+// from 'Pending Approval' (e.g. back to Draft) can no longer be decided, so its
+// stale Pending record must not clutter the queue forever.
 router.get('/pending', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
   try {
-    const pending = await Approval.find({ status: 'Pending' })
+    const decidableContracts = await Contract.find({ status: 'Pending Approval', isArchived: false }).select('_id');
+    const pending = await Approval.find({ status: 'Pending', contract: { $in: decidableContracts.map((c) => c._id) } })
       .populate('contract')
       .populate('requestedBy', 'name email');
     res.json(pending);

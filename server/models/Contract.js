@@ -1,15 +1,25 @@
 const mongoose = require('mongoose');
 
+// The currencies the create and edit forms offer, and the only ones the
+// dashboard's `Intl.NumberFormat` call and the report grouping handle. Shared
+// with utils/contractValidation.js, which validates the value on the way in so
+// a refusal is a 400 with a readable message; the enum here is the backstop that
+// holds on a direct model write.
+const CURRENCIES = require('../utils/contractValidation').CONTRACT_CURRENCIES;
+
 const contractSchema = new mongoose.Schema({
   contractNumber: { type: String, required: true, unique: true },
   title: { type: String, required: true, trim: true },
   type: { type: String, required: true, enum: ['Vendor', 'Client', 'NDA', 'SLA', 'Employment', 'Partnership', 'Other'] },
-  partyName: { type: String, required: true },
+  // `trim` was missing here while `title` above had it, so a required business
+  // field accepted "   ": `required` rejects an empty string, but not one that
+  // is only whitespace, and the blank counterparty was then stored as sent.
+  partyName: { type: String, required: true, trim: true },
   description: { type: String },
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
   amount: { type: Number, required: true },
-  currency: { type: String, default: 'USD' },
+  currency: { type: String, enum: CURRENCIES, default: 'USD' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   assignedUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   status: { 

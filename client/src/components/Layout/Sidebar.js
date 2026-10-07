@@ -1,8 +1,8 @@
 import React, { useContext, useEffect, useRef } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, CheckSquare, Clock, Flag,
-  BarChart3, Users, Settings, ShieldCheck, FilePlus, User, Activity, X
+  BarChart3, Users, Settings, ShieldCheck, FilePlus, User, Activity, X, FilePen
 } from 'lucide-react';
 import { AuthContext } from '../../context/AuthContext';
 import { ALL_ROLES, MANAGER_ROLES, ADMIN_ROLES, canManage } from '../../utils/roles';
@@ -12,6 +12,7 @@ const LINKS = [
   { name: 'Contracts', path: '/contracts', icon: FileText, roles: ALL_ROLES },
   { name: 'Create Contract', path: '/contracts/create', icon: FilePlus, roles: ALL_ROLES },
   { name: 'Approval Requests', path: '/approvals', icon: ShieldCheck, roles: MANAGER_ROLES },
+  { name: 'Amendment Requests', path: '/amendments', icon: FilePen, roles: MANAGER_ROLES },
   { name: 'Obligations', path: '/obligations', icon: CheckSquare, roles: ALL_ROLES },
   { name: 'Milestones', path: '/milestones', icon: Flag, roles: ALL_ROLES },
   { name: 'Renewals', path: '/renewals', icon: Clock, roles: MANAGER_ROLES },
@@ -22,6 +23,13 @@ const LINKS = [
   { name: 'Settings', path: '/settings', icon: Settings, roles: ADMIN_ROLES }
 ];
 
+// A link covers the current path when it is that path or a parent of it, so a
+// contract detail page still lights up "Contracts". `NavLink` cannot decide
+// this on its own: it derives `aria-current="page"` from the very same prefix
+// test and the attribute is not overridable, so on `/contracts/create` both the
+// parent "Contracts" and the peer "Create Contract" item were marked current.
+const coversPath = (pathname, path) => pathname === path || pathname.startsWith(`${path}/`);
+
 const Sidebar = ({ isOpen, onClose }) => {
   const { user } = useContext(AuthContext);
   const location = useLocation();
@@ -29,6 +37,15 @@ const Sidebar = ({ isOpen, onClose }) => {
   const closeRef = useRef(null);
 
   const links = LINKS.filter((link) => link.roles.includes(user?.role));
+
+  // The most specific link that covers the current path owns the highlight, so
+  // a nested sibling wins over its parent section while a detail page with no
+  // link of its own still falls back to the section it belongs to.
+  const activePath = links.reduce(
+    (best, link) =>
+      coversPath(location.pathname, link.path) && link.path.length > (best ? best.length : -1) ? link.path : best,
+    null
+  );
 
   // A tap outside the drawer closes it, and so does Escape.
   useEffect(() => {
@@ -102,21 +119,20 @@ const Sidebar = ({ isOpen, onClose }) => {
             const Icon = link.icon;
 
             return (
-              <NavLink
+              <Link
                 key={link.path}
                 to={link.path}
                 onClick={onClose}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                    isActive
-                      ? 'bg-white text-[#0f1d3a] shadow-[0_8px_24px_rgba(15,29,58,0.08)] dark:bg-[#1a2436] dark:text-white'
-                      : 'text-[#64748b] hover:bg-white/70 hover:text-[#0f1d3a] dark:text-slate-400 dark:hover:bg-[#1a2436] dark:hover:text-slate-100'
-                  }`
-                }
+                aria-current={link.path === activePath ? 'page' : undefined}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                  link.path === activePath
+                    ? 'bg-white text-[#0f1d3a] shadow-[0_8px_24px_rgba(15,29,58,0.08)] dark:bg-[#1a2436] dark:text-white'
+                    : 'text-[#64748b] hover:bg-white/70 hover:text-[#0f1d3a] dark:text-slate-400 dark:hover:bg-[#1a2436] dark:hover:text-slate-100'
+                }`}
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span className="min-w-0 truncate">{link.name}</span>
-              </NavLink>
+              </Link>
             );
           })}
         </nav>
@@ -131,13 +147,15 @@ const Sidebar = ({ isOpen, onClose }) => {
                 ? 'Track every end date and renew before it lapses.'
                 : 'Obligations and milestones assigned to you appear here.'}
             </div>
-            <NavLink
+            {/* A shortcut to a page, not the page's own entry in the menu, so
+                it stays out of the active state the list above owns. */}
+            <Link
               to={canManage(user?.role) ? '/renewals' : '/obligations'}
               onClick={onClose}
               className="mt-3 inline-block font-bold text-[#d51d29] dark:text-[#ff8a90]"
             >
               {canManage(user?.role) ? 'Open renewals' : 'Open obligations'} →
-            </NavLink>
+            </Link>
           </div>
         </div>
       </aside>

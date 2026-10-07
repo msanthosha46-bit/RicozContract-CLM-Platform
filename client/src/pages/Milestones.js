@@ -40,6 +40,10 @@ const Milestones = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Whether the list has actually been READ. An empty list and a failed read both
+  // leave `milestones` empty, and only one of them may be reported as "No
+  // milestones yet".
+  const [milestonesLoaded, setMilestonesLoaded] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
 
   const fetchMilestones = async () => {
@@ -47,8 +51,13 @@ const Milestones = () => {
       setLoading(true);
       const { data } = await API.get('/milestones');
       setMilestones(data);
+      setMilestonesLoaded(true);
       setError('');
     } catch (err) {
+      // A failed read must not be reported as an empty list. The previous rows
+      // are deliberately left in place: on a retry that fails there is still
+      // something true on screen, and on the first load `milestonesLoaded`
+      // stays false so the table area does not claim there is nothing here.
       setError(err.response?.data?.message || 'Unable to load milestones');
     } finally {
       setLoading(false);
@@ -180,6 +189,29 @@ const Milestones = () => {
   // a chip is always the number of rows below it.
   const visible = filterByStatus(milestones, statusFilter);
 
+  // The edit form has to be able to name *this* milestone's own contract and
+  // assignee, and `loadFormData` cannot always supply them: GET /contracts
+  // filters out archived contracts and GET /users/directory filters out
+  // deactivated users. A milestone on an archived contract, or one whose
+  // assignee has since been deactivated, therefore had no matching <option>,
+  // and the browser resolved the value to the first option instead:
+  //   - the disabled contract select displayed an unrelated contract,
+  //     contradicting the contract number in the row it was opened from;
+  //   - the `required` assignee select was left on its empty placeholder, whose
+  //     value is "", so native validation refused to submit the form at all and
+  //     the milestone could not be edited through the UI by anyone.
+  // Appending the real record when it is missing keeps the form's options a
+  // superset of what it already offered; nothing is removed or reordered.
+  const idOfRef = (ref) => (ref && typeof ref === 'object' ? ref._id : ref) || '';
+
+  const editContracts = editTarget?.contract && !contracts.some((c) => c._id === idOfRef(editTarget.contract))
+    ? [...contracts, { _id: idOfRef(editTarget.contract), contractNumber: editTarget.contract.contractNumber, title: editTarget.contract.title }]
+    : contracts;
+
+  const editPeople = editTarget?.assignedTo && !people.some((p) => p._id === idOfRef(editTarget.assignedTo))
+    ? [...people, { _id: idOfRef(editTarget.assignedTo), name: editTarget.assignedTo.name }]
+    : people;
+
   if (loading) return <PageSkeleton rows={6} columns={6} />;
 
   return (
@@ -240,7 +272,16 @@ const Milestones = () => {
       )}
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
-        {milestones.length === 0 ? (
+        {!milestonesLoaded ? (
+          /* The list was never read. Reporting "No milestones yet" here would
+             contradict the error and retry above, and would invite the user to
+             create a milestone that may already exist. */
+          <div className="px-6 py-10 text-center">
+            <p className="text-sm text-slate-500">
+              The milestone list could not be loaded. Use Retry above to try again.
+            </p>
+          </div>
+        ) : milestones.length === 0 ? (
           <EmptyState
             icon={Flag}
             title={canManage ? 'No milestones yet' : 'No milestones assigned to you'}
@@ -368,11 +409,11 @@ const Milestones = () => {
           <form id="milestone-edit-form" onSubmit={saveEdit} className="space-y-3">
             <input required placeholder="Title" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
             <select required value={editForm.contract} disabled className="w-full rounded-xl border border-slate-200 p-3 text-sm disabled:bg-slate-50">
-              {contracts.map((contract) => <option key={contract._id} value={contract._id}>{contract.contractNumber} · {contract.title}</option>)}
+              {editContracts.map((contract) => <option key={contract._id} value={contract._id}>{contract.contractNumber} · {contract.title}</option>)}
             </select>
             <select required value={editForm.assignedTo} onChange={(e) => setEditForm({ ...editForm, assignedTo: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm">
               <option value="">Assign to</option>
-              {people.map((person) => <option key={person._id} value={person._id}>{person.name}</option>)}
+              {editPeople.map((person) => <option key={person._id} value={person._id}>{person.name}</option>)}
             </select>
             <input required type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
             <textarea placeholder="Description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />

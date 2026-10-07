@@ -15,6 +15,7 @@ const UserManagement = () => {
     try {
       const { data } = await API.get('/users');
       setUsers(data);
+      setError('');
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to load users');
     } finally {
@@ -32,6 +33,7 @@ const UserManagement = () => {
       setToast({ type: 'success', message: 'User updated' });
       const { data } = await API.get('/users');
       setUsers(data);
+      setError('');
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to update user');
     }
@@ -49,11 +51,30 @@ const UserManagement = () => {
         <h1 className="text-4xl font-black tracking-[-0.06em] text-[#0f172a]">User management</h1>
       </div>
 
-      {error && <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={fetchUsers}
+            className="shrink-0 rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
         {users.length === 0 ? (
-          <EmptyState title="No users yet" description="Accounts appear here as people join the workspace." />
+          error ? (
+            <div className="px-6 py-10 text-center">
+              <p className="text-sm text-slate-500">
+                The user list could not be loaded. Use Retry above to try again.
+              </p>
+            </div>
+          ) : (
+            <EmptyState title="No users yet" description="Accounts appear here as people join the workspace." />
+          )
         ) : (
           /* The table needs its own scroll container: index.css gives tables a
              40rem floor on a phone, and this parent clips overflow, so without

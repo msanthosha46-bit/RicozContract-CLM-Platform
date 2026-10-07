@@ -18,6 +18,7 @@ const ApprovalRequests = () => {
       setLoading(true);
       const { data } = await API.get('/approvals/pending');
       setRequests(data);
+      setError('');
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to load approval requests');
     } finally {
@@ -58,15 +59,34 @@ const ApprovalRequests = () => {
         <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Approval requests</h1>
       </div>
 
-      {error && <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={fetchApprovals}
+            className="shrink-0 rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
         {requests.length === 0 ? (
-          <EmptyState
-            icon={Inbox}
-            title="No pending approvals"
-            description="Contracts submitted for review appear here with approve and reject actions."
-          />
+          error ? (
+            <div className="px-6 py-10 text-center">
+              <p className="text-sm text-slate-500">
+                The approval list could not be loaded. Use Retry above to try again.
+              </p>
+            </div>
+          ) : (
+            <EmptyState
+              icon={Inbox}
+              title="No pending approvals"
+              description="Contracts submitted for review appear here with approve and reject actions."
+            />
+          )
         ) : (
           /* Own scroll container: the table needs 40rem on a phone and this
              parent clips overflow, so the Action column would be cut off. */

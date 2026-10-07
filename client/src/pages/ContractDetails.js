@@ -2,10 +2,15 @@ import React, { useContext, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import API from '../services/api';
 import StatusBadge from '../components/Layout/Common/StatusBadge';
-import { ArrowLeft, Pencil, FileText, Upload, Download, BadgeCheck, LoaderCircle } from 'lucide-react';
+import { ArrowLeft, Pencil, FileText, Upload, Download, BadgeCheck, LoaderCircle, FilePen } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import { canSubmitForApproval } from '../utils/contractTransitions';
+import { isEditableStatus } from '../utils/contractEditLock';
+import { canRequestAmendment } from '../utils/amendments';
+import { formatDate, formatDateTime } from '../utils/date';
 import Modal from '../components/Layout/Common/Modal';
+import RequestAmendmentModal from '../components/Amendments/RequestAmendmentModal';
+import AmendmentHistory from '../components/Amendments/AmendmentHistory';
 import Toast from '../components/Layout/Common/Toast';
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -52,25 +57,88 @@ const ContractDetails = () => {
   const [downloadId, setDownloadId] = useState(null);
   const [error, setError] = useState('');
   const [documentError, setDocumentError] = useState('');
+  // Whether the document list was actually READ. An empty list and a failed
+  // read both leave `documents` empty, and only one of them may be shown as
+  // "No documents yet".
+  const [documentsLoaded, setDocumentsLoaded] = useState(false);
   const [file, setFile] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [toast, setToast] = useState(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [submittingForApproval, setSubmittingForApproval] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  // The amendment trail is a separate resource from the contract, so it is
+  // fetched separately and can settle after the contract has. A failure here
+  // must not blank the page: the contract itself is already on screen.
+  const [amendments, setAmendments] = useState([]);
+  const [amendmentsLoading, setAmendmentsLoading] = useState(true);
+  const [amendmentsError, setAmendmentsError] = useState('');
+  const [amendmentOpen, setAmendmentOpen] = useState(false);
   const isAdmin = user?.role === 'Admin';
+
+  const fetchAmendments = async () => {
+    try {
+      setAmendmentsLoading(true);
+      const { data } = await API.get(`/contract-amendments`, { params: { contract: id } });
+      setAmendments(Array.isArray(data) ? data : []);
+      setAmendmentsError('');
+    } catch (err) {
+      // A failed read must not be shown as an empty history. Two things depend
+      // on this list: the trail the requester reads, and the one-open-request
+      // rule that decides whether the request button is offered. Reporting an
+      // empty list for a failed request would claim no request is open and offer
+      // a request the server then refuses with a 409, so the failure is kept
+      // visible and the button is withheld until the list is known.
+      setAmendments([]);
+      setAmendmentsError(err.response?.data?.message || 'The amendment history could not be loaded.');
+    } finally {
+      setAmendmentsLoading(false);
+    }
+  };
 
   const fetchContract = async () => {
     try {
       setLoading(true);
-      const [contractRes, docsRes] = await Promise.all([
+      // The contract and its document list are read in parallel but settled
+      // SEPARATELY, deliberately. `Promise.all` rejects as soon as either
+      // request fails and discards the sibling's successful result, so a
+      // failure in the document list - which reads a different collection and
+      // can fail on its own - took down the whole page: the contract title,
+      // Key Details, obligations and milestones all disappeared even though
+      // `GET /contracts/:id` had succeeded, and the user was told the contract
+      // could not be loaded. The amendment trail below is already fetched this
+      // way for exactly this reason.
+      //
+      // Only the contract read may blank the page. A document-list failure is
+      // reported inside the Documents panel, which then declines to show an
+      // empty state, because "no documents" and "the list could not be read"
+      // are different facts and only one of them is true.
+      const [contractResult, documentsResult] = await Promise.allSettled([
         API.get(`/contracts/${id}`),
         API.get(`/documents/contract/${id}`),
       ]);
-      setContract(contractRes.data);
-      setDocuments(docsRes.data);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Unable to load contract details');
+
+      if (contractResult.status === 'fulfilled') {
+        setContract(contractResult.value.data);
+        setError('');
+      } else {
+        setContract(null);
+        setError(contractResult.reason?.response?.data?.message || 'Unable to load contract details');
+      }
+
+      if (documentsResult.status === 'fulfilled') {
+        const list = documentsResult.value.data;
+        setDocuments(Array.isArray(list) ? list : []);
+        setDocumentsLoaded(true);
+        setDocumentError('');
+      } else {
+        setDocuments([]);
+        setDocumentsLoaded(false);
+        setDocumentError(
+          documentsResult.reason?.response?.data?.message
+            || 'The document list could not be loaded.'
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -78,6 +146,7 @@ const ContractDetails = () => {
 
   useEffect(() => {
     fetchContract();
+    fetchAmendments();
   }, [id]);
 
   const handleFileUpload = async () => {
@@ -163,6 +232,11 @@ const ContractDetails = () => {
     }
   };
 
+  // Not a hook: a pure predicate over state the page already holds. Evaluated on
+  // every render so the button reflects the contract's state and any open
+  // request as soon as either changes.
+  const amendmentRequest = canRequestAmendment({ contract, amendments, user });
+
   if (loading) {
     return (
       <div className="space-y-6" role="status" aria-live="polite" aria-busy="true">
@@ -226,6 +300,18 @@ const ContractDetails = () => {
           <Link to={`/contracts/${id}/edit`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             <Pencil className="w-4 h-4" /> Edit
           </Link>
+          {/* The forward path for the fields the Edit screen now locks. Shown
+              only where the server would accept the request, so a Draft or a
+              contract with an open request is never invited to raise one. */}
+          {!amendmentsError && amendmentRequest.allowed && (
+            <button
+              type="button"
+              onClick={() => setAmendmentOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-[#d51d29]/40 bg-[#fff0f0] px-4 py-3 text-sm font-semibold text-[#d51d29] hover:bg-[#ffe4e4] dark:border-[#d51d29]/50 dark:bg-[#d51d29]/15 dark:text-[#ff8a90]"
+            >
+              <FilePen className="w-4 h-4" /> Request Amendment
+            </button>
+          )}
           {canSubmitForApproval(contract.status) && (
             <button
               type="button"
@@ -253,8 +339,8 @@ const ContractDetails = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600">
               <div><span className="block text-xs uppercase tracking-wide text-slate-500">Type</span><span className="font-medium text-slate-800">{contract.type}</span></div>
               <div><span className="block text-xs uppercase tracking-wide text-slate-500">Counterparty</span><span className="font-medium text-slate-800">{contract.partyName}</span></div>
-              <div><span className="block text-xs uppercase tracking-wide text-slate-500">Start Date</span><span className="font-medium text-slate-800">{new Date(contract.startDate).toLocaleDateString()}</span></div>
-              <div><span className="block text-xs uppercase tracking-wide text-slate-500">End Date</span><span className="font-medium text-slate-800">{new Date(contract.endDate).toLocaleDateString()}</span></div>
+              <div><span className="block text-xs uppercase tracking-wide text-slate-500">Start Date</span><span className="font-medium text-slate-800">{formatDate(contract.startDate)}</span></div>
+              <div><span className="block text-xs uppercase tracking-wide text-slate-500">End Date</span><span className="font-medium text-slate-800">{formatDate(contract.endDate)}</span></div>
               <div><span className="block text-xs uppercase tracking-wide text-slate-500">Value</span><span className="font-medium text-slate-800">{contract.currency} {Number(contract.amount || 0).toLocaleString()}</span></div>
               <div><span className="block text-xs uppercase tracking-wide text-slate-500">Created By</span><span className="font-medium text-slate-800">{contract.createdBy?.name || 'Unknown'}</span></div>
             </div>
@@ -265,10 +351,53 @@ const ContractDetails = () => {
             </div>
           </div>
 
+          {/* The amendment trail. Rendered for every role that can open the
+              contract, because the requester has to be able to see what
+              happened to their request; the server scopes the list to the
+              contracts the caller may read. */}
+          <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-lg font-bold text-slate-800">Amendments</h2>
+              {amendmentsError ? (
+                /* Unknown, not empty: withhold the request control rather than
+                   offer one the server may refuse. */
+                <p className="text-xs text-slate-500 sm:text-right">
+                  Reload the page to try again before requesting an amendment.
+                </p>
+              ) : amendmentRequest.allowed ? (
+                <button
+                  type="button"
+                  onClick={() => setAmendmentOpen(true)}
+                  className="inline-flex items-center gap-1.5 self-start rounded-xl border border-[#d51d29]/40 bg-[#fff0f0] px-3 py-2 text-xs font-semibold text-[#d51d29] hover:bg-[#ffe4e4] dark:border-[#d51d29]/50 dark:bg-[#d51d29]/15 dark:text-[#ff8a90]"
+                >
+                  <FilePen className="w-3.5 h-3.5" /> Request Amendment
+                </button>
+              ) : (
+                <p className="text-xs text-slate-500 sm:text-right">{amendmentRequest.reason}</p>
+              )}
+            </div>
+            {amendmentsError ? (
+              <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                {amendmentsError}
+              </p>
+            ) : (
+              <AmendmentHistory
+                amendments={amendments}
+                loading={amendmentsLoading}
+                isEditableStatus={isEditableStatus(contract.status)}
+              />
+            )}
+          </div>
+
           <div className="rounded-[26px] border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-4">
               <h2 className="text-lg font-bold text-slate-800">Documents</h2>
-              <span className="text-sm text-slate-500">{documents.length} {documents.length === 1 ? 'file' : 'files'}</span>
+              {/* The count is only stated once the list has actually been read;
+                  otherwise a failed read would report "0 files" as though the
+                  contract were known to have none. */}
+              {documentsLoaded && (
+                <span className="text-sm text-slate-500">{documents.length} {documents.length === 1 ? 'file' : 'files'}</span>
+              )}
             </div>
 
             <div className="flex flex-col gap-3 mb-3">
@@ -312,7 +441,13 @@ const ContractDetails = () => {
             )}
 
             <div className="space-y-3">
-              {documents.length === 0 ? (
+              {!documentsLoaded ? (
+                // The list was never read, so the count and the rows below would
+                // both be inventions. The reason is already announced above.
+                <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                  The document list is unavailable right now.
+                </p>
+              ) : documents.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
                   <FileText className="mx-auto h-8 w-8 text-slate-400" />
                   <p className="mt-3 text-sm font-semibold text-slate-700">No documents yet</p>
@@ -330,7 +465,7 @@ const ContractDetails = () => {
                           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                             <span className="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">Version {doc.version}</span>
                             <span>{formatFileSize(doc.fileSize)}</span>
-                            <span>{new Date(doc.createdAt).toLocaleString()}</span>
+                            <span>{formatDateTime(doc.createdAt)}</span>
                             {doc.uploadedBy?.name && <span>Uploaded by {doc.uploadedBy.name}</span>}
                           </div>
                         </div>
@@ -370,12 +505,28 @@ const ContractDetails = () => {
               </div>
               <div className="flex justify-between gap-4 py-2">
                 <dt className="text-slate-500">Last Updated</dt>
-                <dd className="font-medium text-slate-800">{new Date(contract.updatedAt).toLocaleString()}</dd>
+                <dd className="font-medium text-slate-800">{formatDateTime(contract.updatedAt)}</dd>
               </div>
             </dl>
           </div>
         </div>
       </div>
+
+      {/* The amendment form. The contract is not reloaded on submit because
+          nothing about the contract changed: a request is not a change. The
+          trail is, so only that is refetched. */}
+      <RequestAmendmentModal
+        isOpen={amendmentOpen}
+        contract={contract}
+        amendments={amendments}
+        user={user}
+        onClose={() => setAmendmentOpen(false)}
+        onSubmitted={async () => {
+          setAmendmentOpen(false);
+          setToast({ type: 'success', message: 'Amendment requested. An administrator or manager will decide it.' });
+          await fetchAmendments();
+        }}
+      />
 
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
     </div>

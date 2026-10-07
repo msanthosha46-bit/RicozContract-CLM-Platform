@@ -1,8 +1,11 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import API from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import { canTransition, getManualEditTargets } from '../utils/contractTransitions';
+import { isFieldLocked, isEditableStatus } from '../utils/contractEditLock';
+import { canManage } from '../utils/roles';
 import SubmitButton from '../components/Layout/Common/SubmitButton';
 import { SkeletonText } from '../components/Layout/Common/Skeleton';
 
@@ -10,8 +13,18 @@ const EditContract = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
-  const canEditStatus = ['Admin', 'Manager'].includes(user?.role);
+  // The same question the sidebar and the topbar ask, read from the shared
+  // helper so the role vocabulary lives in one place. The server re-checks it:
+  // `PUT /contracts/:id` refuses a status from anyone who is not in the
+  // allow-list in utils/access.js.
+  const canEditStatus = canManage(user?.role);
   const [currentStatus, setCurrentStatus] = useState('Draft');
+  // The server refuses a change to the financial terms, the dates or the
+  // assignee from submission onwards, for every role. Mirrored here so those
+  // inputs are visibly locked instead of failing on save.
+  const termsLocked = !isEditableStatus(currentStatus);
+  const lockInput = (field) => (isFieldLocked(currentStatus, field) ? ' opacity-60 cursor-not-allowed' : '');
+  const lockInputProps = (field) => (isFieldLocked(currentStatus, field) ? { disabled: true } : {});
   const [formData, setFormData] = useState({
     title: '',
     type: 'Vendor',
@@ -26,9 +39,17 @@ const EditContract = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Whether the contract actually arrived. The load used to be treated as
+  // successful whenever it finished, so a 404 or a 403 cleared the loading
+  // flag and left a fully populated, editable form with a working Save button
+  // sitting over an empty record - an offer to save a contract that was never
+  // read. The form is now rendered only once there is something in it.
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const fetchContract = async () => {
+      setLoading(true);
+      setLoaded(false);
       try {
         const { data } = await API.get(`/contracts/${id}`);
         setFormData({
@@ -38,11 +59,17 @@ const EditContract = () => {
           description: data.description || '',
           startDate: data.startDate ? new Date(data.startDate).toISOString().slice(0, 10) : '',
           endDate: data.endDate ? new Date(data.endDate).toISOString().slice(0, 10) : '',
-          amount: data.amount || '',
+          // `data.amount || ''` turned a stored 0 into an empty string, so a
+          // zero-amount contract opened in a required field the user had to
+          // re-type before anything could be saved. Only an absent amount is
+          // absent; 0 is a real amount the server accepts.
+          amount: data.amount === undefined || data.amount === null ? '' : String(data.amount),
           currency: data.currency || 'USD',
           status: data.status || 'Draft'
         });
         setCurrentStatus(data.status || 'Draft');
+        setError('');
+        setLoaded(true);
       } catch (err) {
         setError(err.response?.data?.message || 'Unable to load contract');
       } finally {
@@ -94,6 +121,32 @@ const EditContract = () => {
     );
   }
 
+  // Nothing was read, so there is nothing to edit. Shown instead of the form,
+  // with a way out - previously this fell through to a populated, editable form
+  // over an empty record, and a Save on it would have overwritten the contract
+  // with whatever the defaults happened to be.
+  if (!loaded) {
+    return (
+      <div className="mx-auto max-w-4xl rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+        <p className="ricoz-eyebrow">Contract workspace</p>
+        <h1 className="mb-4 text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Edit contract</h1>
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <p className="font-semibold">{error || 'Unable to load contract'}</p>
+          <p className="mt-1">The contract was not loaded, so there is nothing to edit.</p>
+        </div>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => navigate('/contracts')}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to contracts
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-4xl rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
       <p className="ricoz-eyebrow">Contract workspace</p>
@@ -128,11 +181,14 @@ const EditContract = () => {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label htmlFor="edit-amount" className="block text-sm font-semibold text-slate-700">Amount</label>
-              <input id="edit-amount" required type="number" inputMode="decimal" min="0" name="amount" value={formData.amount} onChange={handleChange} className={field} />
+              {/* step="any" matches the server, which takes any non-negative
+                  finite number. The implicit step=1 marked every decimal a
+                  mismatch and blocked the submit. */}
+              <input id="edit-amount" required type="number" inputMode="decimal" min="0" step="any" name="amount" value={formData.amount} onChange={handleChange} className={`${field}${lockInput('amount')}`} {...lockInputProps('amount')} />
             </div>
             <div>
               <label htmlFor="edit-currency" className="block text-sm font-semibold text-slate-700">Currency</label>
-              <select id="edit-currency" name="currency" value={formData.currency} onChange={handleChange} className={field}>
+              <select id="edit-currency" name="currency" value={formData.currency} onChange={handleChange} className={`${field}${lockInput('currency')}`} {...lockInputProps('currency')}>
                 <option value="USD">USD</option>
                 <option value="EUR">EUR</option>
                 <option value="GBP">GBP</option>
@@ -142,14 +198,27 @@ const EditContract = () => {
           </div>
         </div>
 
+        {termsLocked && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="note">
+            <p className="font-semibold">
+              Amount, currency, dates and the assignee are locked in state &apos;{currentStatus}&apos;.
+            </p>
+            <p className="mt-1">
+              An approval fixed these terms, so changing them needs a separate, approved amendment
+              rather than an edit. Title, counterparty and description stay editable. To change a
+              locked value, raise an amendment from the contract page.
+            </p>
+          </div>
+        )}
+
         <div className="grid gap-5 md:grid-cols-2">
           <div>
             <label htmlFor="edit-start" className="block text-sm font-semibold text-slate-700">Start date</label>
-            <input id="edit-start" required type="date" name="startDate" value={formData.startDate} onChange={handleChange} className={field} />
+            <input id="edit-start" required type="date" name="startDate" value={formData.startDate} onChange={handleChange} className={`${field}${lockInput('startDate')}`} {...lockInputProps('startDate')} />
           </div>
           <div>
             <label htmlFor="edit-end" className="block text-sm font-semibold text-slate-700">End date</label>
-            <input id="edit-end" required type="date" name="endDate" value={formData.endDate} onChange={handleChange} className={field} />
+            <input id="edit-end" required type="date" name="endDate" value={formData.endDate} onChange={handleChange} className={`${field}${lockInput('endDate')}`} {...lockInputProps('endDate')} />
           </div>
         </div>
 

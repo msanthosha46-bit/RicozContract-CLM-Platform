@@ -6,6 +6,7 @@ import { Search, Plus, FileText, SlidersHorizontal, ChevronLeft, ChevronRight } 
 import { SkeletonRows } from '../components/Layout/Common/Skeleton';
 import EmptyState from '../components/Layout/Common/EmptyState';
 import { VALID_STATUSES } from '../utils/contractTransitions';
+import { formatDate } from '../utils/date';
 
 const PAGE_SIZE = 20;
 
@@ -158,7 +159,16 @@ const ContractsList = () => {
       </div>
 
       {error && (
-        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={fetchContracts}
+            className="shrink-0 rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+          >
+            Retry
+          </button>
+        </div>
       )}
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
@@ -168,6 +178,13 @@ const ContractsList = () => {
             <SkeletonRows rows={8} columns={6} />
           </div>
         ) : contracts.length === 0 ? (
+          error ? (
+            <div className="px-6 py-10 text-center">
+              <p className="text-sm text-slate-500">
+                The contract list could not be loaded. Use Retry above to try again.
+              </p>
+            </div>
+          ) : (
           <EmptyState
             icon={FileText}
             title="No contracts found"
@@ -192,6 +209,7 @@ const ContractsList = () => {
               )
             }
           />
+          )
         ) : (
           /* Own scroll container: index.css floors tables at 40rem on a phone
              and this parent clips, so without it the right-hand columns
@@ -217,7 +235,7 @@ const ContractsList = () => {
                     <td className="py-3 px-4 font-semibold text-slate-800">{c.title}</td>
                     <td className="py-3 px-4">{c.type}</td>
                     <td className="py-3 px-4">{c.partyName}</td>
-                    <td className="py-3 px-4 whitespace-nowrap">{new Date(c.endDate).toLocaleDateString()}</td>
+                    <td className="py-3 px-4 whitespace-nowrap">{formatDate(c.endDate)}</td>
                     <td className="py-3 px-4 whitespace-nowrap font-medium tabular-nums">{c.currency} {Number(c.amount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                     <td className="py-3 px-4"><StatusBadge status={c.status} /></td>
                     <td className="py-3 px-4 text-right">

@@ -296,6 +296,44 @@ test('non-manager roles get 403 on approval admin endpoints', async () => {
   assert.equal(actor.status, 403);
 });
 
+test('the pending approval queue lists only decidable approvals', async () => {
+  const manager = await createUser({ name: 'P4 Mgr Pending', email: 'p4.mgr.pending@ricoz.test', role: 'Manager' });
+  const token = signToken(manager);
+  const requester = await createUser({ name: 'P4 Emp Pending', email: 'p4.emp.pending@ricoz.test' });
+  const Approval = require('../models/Approval');
+
+  // A contract still in Pending Approval: its Pending approval is decidable.
+  const decidable = await makeContract({ createdBy: requester._id, assignedUser: requester._id, status: 'Pending Approval' });
+  const decidableApproval = await Approval.create({ contract: decidable._id, requestedBy: requester._id, status: 'Pending' });
+
+  // Stale Pending record: the contract was moved back to Draft after submission.
+  const drafted = await makeContract({ createdBy: requester._id, assignedUser: requester._id, status: 'Draft' });
+  const staleApproval = await Approval.create({ contract: drafted._id, requestedBy: requester._id, status: 'Pending' });
+
+  // An already-active contract that still carries a Pending record.
+  const active = await makeContract({ createdBy: requester._id, assignedUser: requester._id, status: 'Active' });
+  const activeApproval = await Approval.create({ contract: active._id, requestedBy: requester._id, status: 'Pending' });
+
+  // An archived contract left in Pending Approval.
+  const archived = await makeContract({ createdBy: requester._id, assignedUser: requester._id, status: 'Pending Approval', isArchived: true });
+  const archivedApproval = await Approval.create({ contract: archived._id, requestedBy: requester._id, status: 'Pending' });
+
+  const res = await api('GET', '/api/approvals/pending', { token });
+  assert.equal(res.status, 200);
+
+  const ids = res.data.map((item) => item._id.toString());
+  assert.ok(ids.includes(decidableApproval._id.toString()), 'decidable approval is listed');
+  assert.ok(!ids.includes(staleApproval._id.toString()), 'stale approval on a Draft contract is hidden');
+  assert.ok(!ids.includes(activeApproval._id.toString()), 'approval on an Active contract is hidden');
+  assert.ok(!ids.includes(archivedApproval._id.toString()), 'approval on an archived contract is hidden');
+
+  // The listing must not change anything: contracts keep their statuses.
+  assert.equal((await Contract.findById(decidable._id)).status, 'Pending Approval');
+  assert.equal((await Contract.findById(drafted._id)).status, 'Draft');
+  assert.equal((await Contract.findById(active._id)).status, 'Active');
+  assert.equal((await Contract.findById(archived._id)).status, 'Pending Approval');
+});
+
 // ---------------------------------------------------------------------------
 // Document security
 // ---------------------------------------------------------------------------

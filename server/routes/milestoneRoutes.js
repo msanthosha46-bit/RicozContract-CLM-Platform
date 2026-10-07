@@ -5,12 +5,12 @@ const Contract = require('../models/Contract');
 const User = require('../models/User');
 const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
-const { canAccessContract } = require('../utils/access');
-const { applyItemUpdate } = require('../utils/itemUpdate');
+const { canAccessContract, isPrivileged } = require('../utils/access');
+const { applyItemUpdate, parseDueDate } = require('../utils/itemUpdate');
 
 router.get('/', protect, async (req, res, next) => {
   try {
-    const query = req.user.role === 'Employee' ? { assignedTo: req.user._id } : {};
+    const query = isPrivileged(req.user) ? {} : { assignedTo: req.user._id };
     const milestones = await Milestone.find(query)
       .populate('contract', 'title contractNumber isArchived')
       .populate('assignedTo', 'name email')
@@ -27,7 +27,7 @@ router.get('/:id', protect, async (req, res, next) => {
       .populate('contract', 'title contractNumber isArchived')
       .populate('assignedTo', 'name email');
     if (!milestone) return res.status(404).json({ message: 'Milestone not found' });
-    if (req.user.role === 'Employee' && milestone.assignedTo?._id?.toString() !== req.user._id.toString()) {
+    if (!isPrivileged(req.user) && milestone.assignedTo?._id?.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'You can only view milestones assigned to you' });
     }
     res.json(milestone);
@@ -43,8 +43,8 @@ router.post('/', protect, authorize('Admin', 'Manager'), async (req, res, next) 
     if (!title || !contractId || !assignedTo || !dueDate) {
       return res.status(400).json({ message: 'Title, contract, assignee and due date are required' });
     }
-    const parsedDueDate = new Date(dueDate);
-    if (Number.isNaN(parsedDueDate.getTime())) {
+    const parsedDueDate = parseDueDate(dueDate);
+    if (!parsedDueDate) {
       return res.status(400).json({ message: 'A valid due date is required' });
     }
 

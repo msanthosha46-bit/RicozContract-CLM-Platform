@@ -103,8 +103,8 @@ const RenewalManagement = () => {
         <p className="mt-2 text-slate-500">Stay ahead of every expiring agreement with 30/60/90-day reminders and a full renewal trail.</p>
       </div>
 
-      {error && (
-        <div className="flex items-center justify-between rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+{error && (
+        <div role="alert" className="flex items-center justify-between rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{error}</span>
           <button onClick={fetchRenewals} className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100">Retry</button>
         </div>
@@ -128,6 +128,13 @@ const RenewalManagement = () => {
 
         <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
           {filtered.length === 0 ? (
+            error ? (
+              <div className="px-6 py-10 text-center">
+                <p className="text-sm text-slate-500">
+                  The expiring contracts could not be loaded. Use Retry above to try again.
+                </p>
+              </div>
+            ) : (
             <EmptyState
               icon={CalendarClock}
               title={filter === 'all' ? 'Nothing expiring soon' : 'Nothing in this window'}
@@ -137,6 +144,7 @@ const RenewalManagement = () => {
                   : 'No contracts fall inside this reminder window. Try a wider window.'
               }
             />
+            )
           ) : (
             /* Own scroll container: the table needs 40rem on a phone and this
                parent clips overflow, so Reminder / Status / Action would be cut. */
@@ -210,11 +218,19 @@ const RenewalManagement = () => {
 
         <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
           {awaitingRenewal.length === 0 ? (
+            error ? (
+              <div className="px-6 py-10 text-center">
+                <p className="text-sm text-slate-500">
+                  The renewable list could not be loaded. Use Retry above to try again.
+                </p>
+              </div>
+            ) : (
             <EmptyState
               icon={CalendarClock}
               title="Nothing lapsed awaiting renewal"
               description="Every contract that can be renewed still has time left on it. Expired agreements appear here so they cannot be stranded."
             />
+            )
           ) : (
             /* Own scroll container, as above: this table needs 34rem on a phone
                and the parent clips overflow. */
@@ -277,11 +293,19 @@ const RenewalManagement = () => {
         </div>
         <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
           {history.length === 0 ? (
+            error ? (
+              <div className="px-6 py-10 text-center">
+                <p className="text-sm text-slate-500">
+                  The renewal history could not be loaded. Use Retry above to try again.
+                </p>
+              </div>
+            ) : (
             <EmptyState
               icon={History}
               title="No renewals recorded yet"
               description="Renew a contract from the list above and the full trail is kept here."
             />
+            )
           ) : (
             /* Own scroll container: the table needs 40rem on a phone and this
                parent clips overflow, so Notes would be cut off. */

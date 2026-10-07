@@ -4,6 +4,7 @@ const connectDB = require('./config/db');
 const markOverdueItems = require('./utils/overdueUpdater');
 const expireEligibleContracts = require('./utils/expiryUpdater');
 const ContractDocument = require('./models/ContractDocument');
+const { validateEmailConfig, sanitizeForLog } = require('./utils/mailer');
 const { createApp, getAllowedOrigins, isProduction } = require('./app');
 const {
   readDocumentVersionIndexReport,
@@ -26,6 +27,24 @@ if (!getAllowedOrigins().length) {
 }
 if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
   console.warn('JWT_SECRET is shorter than 32 characters; use a long random value in production.');
+}
+
+// Password-reset email. Reported at boot so a missing transport is a log line
+// here rather than a user reporting that no link arrived. The sanitiser is
+// applied to every problem so no configuration value can be printed.
+const emailConfig = validateEmailConfig();
+if (emailConfig.valid) {
+  console.log(
+    `Password reset email: transport=${emailConfig.provider}${
+      emailConfig.transports.length > 1 ? ' (SMTP fallback available)' : ''
+    }`
+  );
+} else {
+  console.error('Password reset email is not configured:');
+  for (const problem of emailConfig.problems) console.error(`  - ${sanitizeForLog(problem)}`);
+}
+for (const warning of emailConfig.warnings) {
+  console.warn(`Password reset email warning: ${sanitizeForLog(warning)}`);
 }
 
 const app = createApp();

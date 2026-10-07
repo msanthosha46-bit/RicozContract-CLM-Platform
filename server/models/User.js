@@ -1,14 +1,20 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+// The one definition of the two closed value sets, exported so the routes that
+// accept them validate against the same list the schema enforces. Keeping a
+// second copy in a route is how the two drift apart.
+const USER_ROLES = ['Admin', 'Manager', 'Employee'];
+const USER_STATUSES = ['Active', 'Inactive'];
+
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String, required: function () { return !this.googleId; } },
   googleId: { type: String, unique: true, sparse: true },
-  role: { type: String, enum: ['Admin', 'Manager', 'Employee'], default: 'Employee' },
+  role: { type: String, enum: USER_ROLES, default: 'Employee' },
   department: { type: String, default: 'General' },
-  status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
+  status: { type: String, enum: USER_STATUSES, default: 'Active' },
   preferences: {
     emailNotifications: { type: Boolean, default: true },
     approvalReminders: { type: Boolean, default: true },
@@ -38,3 +44,5 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 };
 
 module.exports = mongoose.model('User', userSchema);
+module.exports.USER_ROLES = USER_ROLES;
+module.exports.USER_STATUSES = USER_STATUSES;

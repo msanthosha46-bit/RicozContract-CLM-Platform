@@ -38,6 +38,33 @@ const expiringWindow = (windowDays = 30, from = new Date()) => {
 const daysRemainingBetween = (from, value) =>
   Math.round((startOfUtcDay(value) - startOfUtcDay(from)) / MS_PER_DAY);
 
+/**
+ * Renders a stored calendar date for a user-facing string, in UTC.
+ *
+ * A contract/work-item date is a calendar date at UTC midnight, so formatting it
+ * with a bare `toLocaleDateString()` renders it in the *host* timezone: on a
+ * server at UTC-5 a contract ending 2026-10-09T00:00:00Z is announced as the
+ * 8th. That is the same offset-dependent hazard `expiringWindow` exists to
+ * avoid, and it disagreed with `client/src/utils/date.js` `formatDate`, which
+ * pins `timeZone: 'UTC'` for exactly this reason.
+ *
+ * The locale is pinned rather than left to the host so the output is identical
+ * on every deployment, and it matches the shape `formatDate` produces for an
+ * en-US browser, so the same date does not read two ways across the app.
+ * Returns an em dash for a missing or unparseable date, as `formatDate` does.
+ */
+const formatUtcDate = (value) => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
 // Contract states the renewal screen actually lists as renewable. Kept here
 // so a contract is never counted as "expiring soon" on the dashboard while
 // being absent from the renewal list a user is sent to act on it.
@@ -51,5 +78,6 @@ module.exports = {
   startOfUtcDay,
   expiringWindow,
   daysRemainingBetween,
+  formatUtcDate,
   EXPIRING_STATUSES
 };

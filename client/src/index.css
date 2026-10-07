@@ -688,3 +688,41 @@
 .dark .ricoz-shell main [class*='border-blue-200'] {
 	border-color: var(--rz-border);
 }
+
+/* ------------------------------------------------------------------ *
+ * Dark-theme rescues for hard-coded utility classes the overrides above
+ * do not reach.
+ *
+ * `bg-[#0f172a]` is the in-shell primary navy (create buttons, modals,
+ * filter chips, the upload progress fill). On `#141c2e` it was a dark
+ * block the text floated on with no visible button at all; slate-700
+ * restores a real button surface while keeping the white label at ~9:1.
+ * The trailing space keeps this off `bg-[#0f172a]/60`, the modal scrim,
+ * whose muted navy must stay opaque-free.
+ *
+ * The `hover:bg-red-100` / `hover:bg-blue-50` chips painted a near-white
+ * block on hover in dark mode; they are lifted to the same translucent
+ * tints the base red/blue surfaces already use. `hover:text-blue-700`
+ * was left as raw `#1d4ed8` (≈2.1:1) in dark; the visible-light blue is
+ * used instead. `shadow-slate-200` behind the two CTAs stayed a light
+ * blue-grey glow in dark.
+ * ------------------------------------------------------------------ */
+.dark .ricoz-shell main [class*='bg-[#0f172a] '] {
+	background-color: #334155;
+}
+
+.dark .ricoz-shell main [class*='hover:bg-red-100']:hover {
+	background-color: rgba(244, 63, 94, 0.18);
+}
+
+.dark .ricoz-shell main [class*='hover:bg-blue-50']:hover {
+	background-color: rgba(59, 130, 246, 0.18);
+}
+
+.dark .ricoz-shell main [class*='hover:text-blue-700']:hover {
+	color: #93c5fd;
+}
+
+.dark .ricoz-shell main [class*='shadow-slate-200'] {
+	--tw-shadow-color: rgba(15, 23, 42, 0.45);
+}

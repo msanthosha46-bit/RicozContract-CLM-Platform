@@ -184,9 +184,33 @@ db.contractdocuments.getIndexes()
 
 Both aggregations must return nothing before `indexes:sync` will build the index. MongoDB cannot create a unique index while duplicate values exist. Resolving duplicates means changing production records, so it needs a separately approved data plan; do not delete or renumber documents as part of deployment.
 
+## Password reset email
+
+The reset link is sent by email, so the API needs a mail transport. Two are
+supported and the choice is made at runtime:
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `RESEND_API_KEY` | Preferred | Resend sending API key. When set, mail goes over the Resend HTTPS API. |
+| `EMAIL_FROM` | With Resend | Verified sender, e.g. `RicozContract <no-reply@your-domain.com>`. Resend refuses any other address. |
+| `SMTP_HOST` | Optional | SMTP host. Used on its own when no Resend key is set, otherwise only as a fallback. |
+| `SMTP_PORT`, `SMTP_SECURE` | Optional | `587`/`false` for STARTTLS, `465`/`true` for implicit TLS. |
+| `SMTP_USER`, `SMTP_PASSWORD` | Optional | SMTP credentials. |
+| `RESEND_TIMEOUT_MS` | Optional | How long one Resend call may take before the fallback runs. Defaults to `10000`. |
+
+Resend is preferred because it is a single HTTPS API call: it keeps working when
+the host cannot open an outbound SMTP connection, which is what made reset mails
+fail with `Connection timeout`. SMTP is tried only if the Resend send fails, and
+it can be removed entirely. `npm run release:verify` reports the transport that
+will be used, and the API prints the same summary on boot.
+
+Nothing sensitive reaches the log output: failures are reported as
+`code=... reason=...` with the API key, reset link, reset token and recipient
+address removed.
+
 ## Deployment
 
-Build the client with `npm run build` and serve the generated `client/build` directory from a static host. Deploy the `server` directory as a Node.js service with `npm start` and configure `MONGO_URI`, `JWT_SECRET`, `CLIENT_URL`, and `PORT` in the host environment.
+Build the client with `npm run build` and serve the generated `client/build` directory from a static host. Deploy the `server` directory as a Node.js service with `npm start` and configure `MONGO_URI`, `JWT_SECRET`, `CLIENT_URL`, `PORT`, `RESEND_API_KEY` and `EMAIL_FROM` in the host environment.
 
 The API health check is available at `/api/health` and returns `{ "status": "ok" }` when the process is running.
 

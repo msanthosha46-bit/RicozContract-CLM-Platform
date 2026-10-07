@@ -99,6 +99,7 @@ const createApp = () => {
   app.use('/api/auth', require('./routes/authRoutes'));
   app.use('/api/users', require('./routes/userRoutes'));
   app.use('/api/contracts', require('./routes/contractRoutes'));
+app.use('/api/contract-amendments', require('./routes/amendmentRoutes'));
   app.use('/api/approvals', require('./routes/approvalRoutes'));
   app.use('/api/obligations', require('./routes/obligationRoutes'));
   app.use('/api/milestones', require('./routes/milestoneRoutes'));

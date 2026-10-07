@@ -83,7 +83,7 @@ const NOTIFICATIONS = {
   ]
 };
 
-const bell = (container) => container.querySelector('button[aria-label="Notifications"]');
+const bell = (container) => container.querySelector('button[aria-label^="Notifications"]');
 const panel = (container) => container.querySelector('[data-overlay="notifications"]');
 const closeButton = (container) => container.querySelector('button[aria-label="Close notifications"]');
 

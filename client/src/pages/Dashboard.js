@@ -13,6 +13,7 @@ import {
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AuthContext } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { PageSkeleton, SkeletonRows } from '../components/Layout/Common/Skeleton';
 import EmptyState from '../components/Layout/Common/EmptyState';
 
@@ -41,6 +42,7 @@ const IN_FLIGHT = ['Draft', 'Pending Review', 'Pending Approval', 'Approved'];
 
 const Dashboard = () => {
   const { user } = useContext(AuthContext);
+  const { isDark } = useTheme();
   const [metrics, setMetrics] = useState(null);
   const [statusBreakdown, setStatusBreakdown] = useState([]);
   const [valueByCurrency, setValueByCurrency] = useState([]);
@@ -96,6 +98,13 @@ const Dashboard = () => {
   // guards a legacy document with a blank status, which would otherwise
   // render an unlabelled bar.
   const chartData = statusBreakdown.map((item) => ({ status: item._id || 'Unknown', count: item.count }));
+  // Recharts renders the bars and ticks as inline SVG paint, which the CSS
+  // overrides in index.css cannot reach, so the palette must follow the theme
+  // in component state. Light keeps the navy-on-white look; dark lifts the
+  // bars to blue-400 on the dark grid.
+  const chartPalette = isDark
+    ? { grid: '#2b3852', tick: '#94a3b8', bar: '#60a5fa' }
+    : { grid: '#e8ebef', tick: '#64748b', bar: '#0f1d3a' };
   const workflowRows = IN_FLIGHT
     .map((status) => ({ status, count: statusBreakdown.find((item) => (item._id || 'Unknown') === status)?.count || 0 }))
     .filter((row) => row.count > 0);
@@ -181,11 +190,11 @@ const Dashboard = () => {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-                  <CartesianGrid stroke="#e8ebef" vertical={false} />
-                  <XAxis dataKey="status" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                  <CartesianGrid stroke={chartPalette.grid} vertical={false} />
+                  <XAxis dataKey="status" axisLine={false} tickLine={false} tick={{ fill: chartPalette.tick, fontSize: 11 }} />
+                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: chartPalette.tick, fontSize: 12 }} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#0f1d3a" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="count" fill={chartPalette.bar} radius={[8, 8, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}

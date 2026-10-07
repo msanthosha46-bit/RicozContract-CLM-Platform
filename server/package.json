@@ -9,6 +9,7 @@
     "seed": "node utils/seedData.js",
     "indexes:check": "node scripts/documentIndexes.js",
     "indexes:sync": "node scripts/documentIndexes.js --apply",
+    "indexes:report": "node scripts/schema-index-report.js",
     "release:verify": "node scripts/release-verify.js",
     "release:verify:smtp": "node scripts/release-verify.js --smtp",
     "test": "node --test test/*.test.js"

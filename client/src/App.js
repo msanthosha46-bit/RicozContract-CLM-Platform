@@ -17,6 +17,7 @@ import CreateContract from './pages/CreateContract';
 import ContractDetails from './pages/ContractDetails';
 import EditContract from './pages/EditContract';
 import ApprovalRequests from './pages/ApprovalRequests';
+import AmendmentQueue from './pages/AmendmentQueue';
 import Obligations from './pages/Obligations';
 import Milestones from './pages/Milestones';
 import RenewalManagement from './pages/RenewalManagement';
@@ -85,6 +86,16 @@ function App() {
               <ProtectedLayout>
                 <RoleProtectedRoute allowedRoles={MANAGER_ROLES}>
                   <ApprovalRequests />
+                </RoleProtectedRoute>
+              </ProtectedLayout>
+            }
+          />
+          <Route
+            path="/amendments"
+            element={
+              <ProtectedLayout>
+                <RoleProtectedRoute allowedRoles={MANAGER_ROLES}>
+                  <AmendmentQueue />
                 </RoleProtectedRoute>
               </ProtectedLayout>
             }

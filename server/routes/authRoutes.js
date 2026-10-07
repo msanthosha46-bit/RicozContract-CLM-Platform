@@ -240,6 +240,9 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res, next) =>
 
     if (user) {
       try {
+        // The hash is stored before the send is attempted, so a transport
+        // failure leaves the token intact and still usable. Clearing it here
+        // would invalidate a token the user may already have received.
         const { token, tokenHash, expiresAt } = generateResetToken();
         user.passwordResetToken = tokenHash; // raw token is never stored
         user.passwordResetExpires = expiresAt;
@@ -251,8 +254,10 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res, next) =>
           expiresInMinutes: RESET_TOKEN_TTL_MINUTES
         });
       } catch (error) {
-        // Log only the reason - never the token or reset link.
-        console.error('Password reset email could not be sent:', error.message);
+        // describeEmailError is the only sanitised form: the transports tried
+        // and their reasons, never the token, the reset link, the API key or
+        // the recipient address. The stored token above stays valid.
+        console.error('Password reset email could not be sent:', mailer.describeEmailError(error));
       }
     }
 

@@ -53,6 +53,15 @@ jobs:
         working-directory: client
         run: npm ci
 
+      # The client suite was previously never executed by CI: the build step
+      # compiles the bundle but never runs the tests, so a regression in the
+      # notification, theme, renewal or responsive-overflow suites could reach
+      # main unnoticed. These are plain node:test files, not CRA/Jest, so they
+      # run with the Node test runner directly.
+      - name: Test client
+        working-directory: client
+        run: npm test
+
       - name: Build client
         working-directory: client
         run: npm run build

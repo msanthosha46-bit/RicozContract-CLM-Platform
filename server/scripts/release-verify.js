@@ -5,10 +5,11 @@
 //   node scripts/release-verify.js          config only, no network
 //   node scripts/release-verify.js --smtp   also performs a live SMTP handshake
 //
-// Safe to run in the platform shell. It never connects to MongoDB, never sends
-// mail unless --smtp is passed, and never prints a secret value: passwords,
-// tokens, private keys and user/supplier addresses are reduced to "set" or to a
-// length. Browser origins are public information, so CLIENT_URL is shown.
+// Safe to run in the platform shell. It never connects to MongoDB, never calls
+// the Resend API, never sends mail unless --smtp is passed, and never prints a
+// secret value: API keys, passwords, tokens, private keys and user/supplier
+// addresses are reduced to "set" or to a length. Browser origins are public
+// information, so CLIENT_URL and the sender domain are shown.
 //
 // Exit code 0 = ready to deploy, 1 = at least one blocker was found.
 
@@ -17,7 +18,14 @@ require('dotenv').config();
 const path = require('path');
 const app = require(path.join(__dirname, '..', 'app'));
 const { buildResetLink } = require(path.join(__dirname, '..', 'utils', 'passwordReset'));
-const { buildTransportOptions } = require(path.join(__dirname, '..', 'utils', 'mailer'));
+const {
+  buildTransportOptions,
+  extractAddress,
+  isResendConfigured,
+  isSmtpConfigured,
+  sanitizeForLog,
+  validateEmailConfig
+} = require(path.join(__dirname, '..', 'utils', 'mailer'));
 
 const LIVE_SMTP = process.argv.includes('--smtp');
 // The origin the Vercel deployment serves the SPA from. When the browser issues
@@ -88,8 +96,15 @@ const required = [
   ['JWT_SECRET', 'token signing secret'],
   ['CLIENT_URL', 'frontend origin, also used for reset links'],
   ['GOOGLE_CLIENT_ID', 'audience for Google ID token verification'],
-  ['SUPABASE_URL', 'storage bucket endpoint'],
-  ['SUPABASE_SERVICE_ROLE_KEY', 'storage credential']
+  // These three names come from REQUIRED_ENV in
+  // services/storage/supabaseStorage.js. The check used to ask for
+  // SUPABASE_SERVICE_ROLE_KEY, which nothing in the codebase reads: on a
+  // correctly configured host `release:verify` reported
+  // "SUPABASE_SERVICE_ROLE_KEY is EMPTY" and exited 1, so the gate was always
+  // red, while the two variables storage actually depends on were never
+  // checked at all. Derived from the adapter so the names cannot drift again.
+  ...require(path.join(__dirname, '..', 'services', 'storage', 'supabaseStorage'))
+    .REQUIRED_ENV.map((name) => [name, `document storage (${name})`])
 ];
 for (const [key, purpose] of required) {
   const value = process.env[key];
@@ -183,18 +198,56 @@ app.corsOriginDelegate(undefined, () => {
   line(PASS, 'DENY   (no Origin header)  not a cross-origin request');
 });
 
-// -------------------------------------------------------------------- smtp ---
-section('SMTP');
-const smtpEnv = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD', 'EMAIL_FROM'];
-const missing = smtpEnv.filter((key) => !process.env[key]);
-if (missing.length) {
-  line(BLOCK, `not configured: ${missing.join(', ')}`);
-  record('BLOCK', `SMTP is incomplete (${missing.join(', ')}) so password reset emails cannot be sent`);
-  finish();
+// -------------------------------------------------------------------- email ---
+section('Email (password reset)');
+// Resend (HTTPS API) is the primary transport and SMTP is an optional fallback,
+// so a missing SMTP block only matters when no Resend key is present. The
+// findings come from the mailer's own validation so this check and the running
+// service can never disagree.
+const emailConfig = validateEmailConfig();
+const resendConfigured = isResendConfigured();
+const smtpConfigured = isSmtpConfigured();
+
+line(
+  emailConfig.transports.length ? PASS : BLOCK,
+  `transport order: ${emailConfig.transports.join(' -> ') || 'none configured'}`
+);
+line(
+  resendConfigured ? PASS : WARN,
+  `RESEND_API_KEY ${mask(process.env.RESEND_API_KEY)} - primary transport, no outbound SMTP needed`
+);
+
+const fromAddress = extractAddress(process.env.EMAIL_FROM);
+const fromDomain = (fromAddress || '').split('@')[1] || null;
+if (fromAddress) {
+  line(PASS, `EMAIL_FROM ${mask(process.env.EMAIL_FROM)} - verified sender required by Resend`);
+  line(PASS, `EMAIL_FROM domain: ${fromDomain}`);
 } else {
-  line(PASS, 'all SMTP variables are present');
+  line(
+    resendConfigured ? BLOCK : WARN,
+    'EMAIL_FROM is EMPTY - Resend only sends from a verified address, SMTP falls back to SMTP_USER'
+  );
+  if (resendConfigured) record('BLOCK', 'EMAIL_FROM is not set, so the Resend transport cannot send');
+}
+
+// Every SMTP problem is only a blocker while SMTP is the transport that has to
+// carry the delivery; otherwise it is a warning about an unused fallback.
+const smtpEnv = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD'];
+const missingSmtp = smtpEnv.filter((key) => !process.env[key]);
+if (!smtpConfigured) {
+  line(
+    resendConfigured ? WARN : BLOCK,
+    `SMTP is not configured${missingSmtp.length ? ` (missing: ${missingSmtp.join(', ')})` : ''}`
+  );
+  if (!resendConfigured) {
+    record('BLOCK', 'SMTP is incomplete (SMTP_HOST is empty) and RESEND_API_KEY is not set, so password reset emails cannot be sent');
+  } else {
+    record('WARN', 'SMTP is not configured, so there is no fallback if a Resend send fails');
+  }
+} else {
+  const options = buildTransportOptions();
+  line(PASS, `SMTP_HOST ${mask(process.env.SMTP_HOST)} host=${options.host} port=${options.port} secure=${options.secure} auth=${mask(options.auth && options.auth.user)}`);
   const userDomain = (process.env.SMTP_USER || '').split('@')[1] || null;
-  const fromDomain = (process.env.EMAIL_FROM || '').split('@')[1] || null;
   if (userDomain && fromDomain) {
     if (userDomain === fromDomain) {
       line(PASS, `SMTP_USER and EMAIL_FROM share the same domain (${fromDomain}), so SPF/DKIM can align`);
@@ -203,8 +256,6 @@ if (missing.length) {
       record('WARN', 'SMTP_USER domain and EMAIL_FROM domain differ');
     }
   }
-  const options = buildTransportOptions();
-  line(PASS, `host=${options.host} port=${options.port} secure=${options.secure} auth=${mask(options.auth && options.auth.user)}`);
   if (String(options.port) === '465' && options.secure !== true) {
     line(BLOCK, 'port 465 requires SMTP_SECURE=true for implicit TLS');
     record('BLOCK', 'SMTP_SECURE must be true when SMTP_PORT is 465');
@@ -213,27 +264,44 @@ if (missing.length) {
     line(WARN, 'port 587 with SMTP_SECURE=true will attempt implicit TLS and usually fails; use false for STARTTLS');
     record('WARN', 'SMTP_PORT 587 normally requires SMTP_SECURE=false');
   }
-  if (LIVE_SMTP) {
-    const nodemailer = require(path.join(__dirname, '..', 'node_modules', 'nodemailer'));
-    nodemailer
-      .createTransport(options)
-      .verify()
-      .then((ok) => {
-        line(ok ? PASS : BLOCK, `live handshake and authentication succeeded: ${ok}`);
-        if (!ok) record('BLOCK', 'SMTP verify() returned false');
-        finish();
-      })
-      .catch((error) => {
-        // The message is printed because a mail server's reply is the whole
-        // point of the check; the password and username are never echoed.
-        line(BLOCK, `live handshake failed: ${error.code || error.message}`);
-        record('BLOCK', `SMTP verify() failed (${error.code || 'unknown'})`);
-        finish();
-      });
+  if (missingSmtp.length) {
+    line(WARN, `optional SMTP variables are empty: ${missingSmtp.join(', ')}`);
+  }
+}
+
+for (const problem of emailConfig.problems) {
+  line(BLOCK, problem);
+  record('BLOCK', problem);
+}
+for (const warning of emailConfig.warnings) {
+  line(WARN, warning);
+  record('WARN', warning);
+}
+
+if (LIVE_SMTP && smtpConfigured) {
+  const nodemailer = require(path.join(__dirname, '..', 'node_modules', 'nodemailer'));
+  nodemailer
+    .createTransport(buildTransportOptions())
+    .verify()
+    .then((ok) => {
+      line(ok ? PASS : BLOCK, `live handshake and authentication succeeded: ${ok}`);
+      if (!ok) record('BLOCK', 'SMTP verify() returned false');
+      finish();
+    })
+    .catch((error) => {
+      // The code is printed because a mail server's reply is the whole point of
+      // the check; the message is sanitised and the password is never echoed.
+      line(BLOCK, `live handshake failed: ${error.code || sanitizeForLog(error.message)}`);
+      record('BLOCK', `SMTP verify() failed (${error.code || 'unknown'})`);
+      finish();
+    });
+} else {
+  if (!smtpConfigured) {
+    console.log('      SMTP is not configured, so there is no live handshake to run');
   } else {
     console.log('      run with --smtp to attempt a real connection and authentication');
-    finish();
   }
+  finish();
 }
 
 function finish() {

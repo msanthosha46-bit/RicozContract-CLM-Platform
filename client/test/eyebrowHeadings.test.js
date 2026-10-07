@@ -42,6 +42,7 @@ test('the section headings all use the shared class', () => {
   // rather than re-spelling the typography.
   const expected = [
     'ActivityLog.js',
+    'AmendmentQueue.js',
     'ApprovalRequests.js',
     'ContractsList.js',
     'CreateContract.js',

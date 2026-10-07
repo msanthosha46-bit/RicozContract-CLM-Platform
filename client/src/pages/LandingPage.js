@@ -111,11 +111,16 @@ const LandingPage = () => {
   const triggerRef = useRef(null);
 
   // Close the mobile menu on a press outside, on Escape, and after following
-  // an in-page link to a section.
+  // an in-page link to a section. The hamburger counts as inside: `pointerdown`
+  // reaches the document before the button's `click`, so treating the trigger
+  // as an outside press would close the panel and then let that click toggle it
+  // straight back open.
   useEffect(() => {
     if (!menuOpen) return undefined;
     const handlePointerDown = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) setMenuOpen(false);
+      if (menuRef.current && menuRef.current.contains(event.target)) return;
+      if (triggerRef.current && triggerRef.current.contains(event.target)) return;
+      setMenuOpen(false);
     };
     const handleKeyDown = (event) => {
       if (event.key !== 'Escape' && event.key !== 'Esc') return;
@@ -150,8 +155,8 @@ const LandingPage = () => {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-5 sm:py-4">
           {/* min-w-0 + truncate keeps the brand whole at 320px instead of
               clipping the second half of the wordmark. */}
-          <Link to="/" className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#d51d29] text-base font-black text-white shadow-lg shadow-red-200 sm:h-10 sm:w-10 sm:text-lg">
+          <Link to="/" className="group flex min-w-0 items-center gap-2.5 sm:gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#d51d29] text-base font-black text-white shadow-lg shadow-red-200 transition group-hover:bg-[#b91c26] sm:h-10 sm:w-10 sm:text-lg">
               R
             </span>
             <span className="min-w-0 truncate text-lg font-black leading-none tracking-[-0.04em] text-[#111827] sm:text-2xl dark:text-slate-100">
@@ -159,7 +164,13 @@ const LandingPage = () => {
             </span>
           </Link>
 
-          <nav aria-label="Sections" className="hidden items-center gap-9 text-sm font-bold text-[#64748b] md:flex dark:text-slate-400">
+          {/* `#5f6e83` is this page's muted text value. It replaced
+              `#64748b`, which clears 4.5:1 on white (4.76) but not on the
+              `#f4f6f9` page tint the copy actually sits on, where it measured
+              4.40. The replacement measures 4.80 there and 5.19 on the white
+              cards. Every muted string on the page uses the same value so the
+              header, hero, cards and footer cannot drift apart again. */}
+          <nav aria-label="Sections" className="hidden items-center gap-9 text-sm font-bold text-[#5f6e83] md:flex dark:text-slate-400">
             {NAV_LINKS.map((link) => (
               <a key={link.href} href={link.href} className="transition hover:text-[#0f172a] dark:hover:text-white">
                 {link.label}
@@ -176,7 +187,7 @@ const LandingPage = () => {
             <div className="hidden items-center gap-2 sm:flex">
               <Link
                 to="/login"
-                className="rounded-xl border border-[#d51d29] bg-white px-4 py-2.5 text-sm font-semibold text-[#d51d29] transition hover:bg-[#fff5f5] dark:bg-transparent dark:hover:bg-[#d51d29]/10 sm:px-5"
+                className="rounded-xl border border-[#d51d29] bg-white px-4 py-2.5 text-sm font-semibold text-[#d51d29] transition hover:bg-[#fff5f5] dark:border-[#d51d29]/40 dark:bg-transparent dark:text-[#ff8a90] dark:hover:bg-[#d51d29]/10 sm:px-5"
               >
                 Sign in
               </Link>
@@ -204,6 +215,7 @@ const LandingPage = () => {
 
         {menuOpen && (
           <div
+            ref={menuRef}
             id="landing-menu"
             className="ricoz-fade border-t border-[#e7ebf0] bg-white px-4 pb-4 pt-2 dark:border-slate-700 dark:bg-[#101827] md:hidden"
           >
@@ -223,14 +235,14 @@ const LandingPage = () => {
               <Link
                 to="/login"
                 onClick={() => setMenuOpen(false)}
-                className="rounded-xl border border-[#d51d29] px-4 py-3 text-center text-sm font-semibold text-[#d51d29] dark:bg-transparent"
+                className="rounded-xl border border-[#d51d29] px-4 py-3 text-center text-sm font-semibold text-[#d51d29] transition hover:bg-[#fff5f5] dark:border-[#d51d29]/40 dark:bg-transparent dark:text-[#ff8a90] dark:hover:bg-[#d51d29]/10"
               >
                 Sign in
               </Link>
               <Link
                 to="/register"
                 onClick={() => setMenuOpen(false)}
-                className="rounded-xl bg-[#d51d29] px-4 py-3 text-center text-sm font-semibold text-white"
+                className="rounded-xl bg-[#d51d29] px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-[#b91c26]"
               >
                 Start free
               </Link>
@@ -252,7 +264,7 @@ const LandingPage = () => {
             Every contract, obligation and renewal in one place.
           </h1>
 
-          <p className="ricoz-rise mx-auto mt-5 max-w-2xl text-base leading-7 text-[#64748b] sm:text-[17px] md:text-[18px] dark:text-slate-400">
+          <p className="ricoz-rise mx-auto mt-5 max-w-2xl text-base leading-7 text-[#5f6e83] sm:text-[17px] md:text-[18px] dark:text-slate-400">
             RicozContract is a workspace for the whole contract lifecycle: record agreements, route
             them for approval, track the obligations and milestones they create, keep the signed
             documents attached, and get alerted before a renewal lapses.
@@ -261,10 +273,10 @@ const LandingPage = () => {
           <div className="ricoz-rise mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center sm:gap-4">
             <Link
               to="/register"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d51d29] px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-red-200 transition hover:bg-[#b91c26]"
+              className="group inline-flex items-center justify-center gap-2 rounded-xl bg-[#d51d29] px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-red-200 transition hover:bg-[#b91c26]"
             >
               Create your workspace
-              <ArrowRight className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />
+              <ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 sm:h-5 sm:w-5" aria-hidden="true" />
             </Link>
             <Link
               to="/login"
@@ -283,7 +295,7 @@ const LandingPage = () => {
                 <span className="h-2.5 w-2.5 rounded-full bg-[#f59e0b] sm:h-3 sm:w-3" />
                 <span className="h-2.5 w-2.5 rounded-full bg-[#22c55e] sm:h-3 sm:w-3" />
               </div>
-              <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-[#64748b] sm:text-sm dark:text-slate-400">
+              <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-[#5f6e83] sm:text-sm dark:text-slate-400">
                 <span className="h-2 w-2 shrink-0 rounded-full bg-[#0f172a] dark:bg-slate-200" />
                 <span className="truncate">RicozContract / Dashboard</span>
               </div>
@@ -325,12 +337,12 @@ const LandingPage = () => {
               <div className="rounded-xl bg-[#f8fafc] p-4 sm:rounded-[18px] sm:p-5 md:p-6 dark:bg-[#162032]">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-xs font-medium text-[#64748b] sm:text-sm">Lifecycle stages</div>
+                    <div className="text-xs font-medium text-[#5f6e83] sm:text-sm dark:text-slate-400">Lifecycle stages</div>
                     <div className="mt-0.5 text-xl font-black text-[#0f172a] sm:mt-1 sm:text-2xl dark:text-slate-100">Contract pipeline</div>
                   </div>
                   <Link
                     to="/register"
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#d51d29] px-3 py-2 text-xs font-semibold text-white shadow-md shadow-red-100 sm:px-4 sm:text-sm"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#d51d29] px-3 py-2 text-xs font-semibold text-white shadow-md shadow-red-100 transition hover:bg-[#b91c26] sm:px-4 sm:text-sm"
                   >
                     <FileText className="h-3.5 w-3.5" aria-hidden="true" /> Create
                   </Link>
@@ -358,7 +370,7 @@ const LandingPage = () => {
             <h2 className="mt-3 text-2xl font-black tracking-[-0.04em] text-[#0f172a] sm:text-3xl md:text-4xl dark:text-slate-50">
               From draft to renewal, in three steps.
             </h2>
-            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-[#64748b] sm:text-base dark:text-slate-400">
+            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-[#5f6e83] sm:text-base dark:text-slate-400">
               Each step maps to a screen in the app, and each one is recorded so the next person
               picking up the contract can see what happened.
             </p>
@@ -374,7 +386,13 @@ const LandingPage = () => {
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff0f0] text-[#d51d29] sm:h-12 sm:w-12 dark:bg-[#d51d29]/15 dark:text-[#ff8a90]">
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </div>
-                  <span className="text-sm font-semibold text-[#94a3b8]">0{index + 1}</span>
+                  {/* The step number is real content rather than decoration, so
+                      it has to clear 4.5:1 like every other piece of body copy.
+                      `#94a3b8` measured 2.56:1 on the white card. The muted
+                      value used across this page measures 5.19:1 there, and
+                      slate-400 leaves the dark card on the 6.63:1 it already
+                      rendered. */}
+                  <span className="text-sm font-semibold text-[#5f6e83] dark:text-slate-400">0{index + 1}</span>
                 </div>
                 <h3 className="mt-4 text-lg font-bold text-[#0f172a] sm:mt-5 sm:text-xl dark:text-slate-100">{title}</h3>
                 <p className="mt-2.5 text-sm leading-6 text-[#475569] sm:mt-3 sm:text-base sm:leading-7 dark:text-slate-400">{text}</p>
@@ -422,7 +440,7 @@ const LandingPage = () => {
 
             <div className="mt-8 grid gap-3 sm:mt-10 sm:grid-cols-2 sm:gap-4">
               {SECURITY.map(({ icon: Icon, title, text }) => (
-                <div key={title} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-left sm:p-5">
+                <div key={title} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition hover:border-[#ff8a90]/40 sm:p-5">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-[#ff8a90] sm:h-10 sm:w-10">
                     <Icon className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
                   </div>
@@ -435,10 +453,10 @@ const LandingPage = () => {
             <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center">
               <Link
                 to="/register"
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d51d29] px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-red-900/30 transition hover:bg-[#b91c26]"
+                className="group inline-flex items-center justify-center gap-2 rounded-xl bg-[#d51d29] px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-red-900/30 transition hover:bg-[#b91c26]"
               >
                 Create your workspace
-                <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
               </Link>
               <Link
                 to="/login"
@@ -475,10 +493,10 @@ const LandingPage = () => {
               R
             </span>
             <span className="min-w-0 truncate text-sm font-bold text-[#0f172a] dark:text-slate-100">
-              Ricoz<span className="text-[#64748b] dark:text-slate-500">Contract</span>
+              Ricoz<span className="text-[#5f6e83] dark:text-slate-400">Contract</span>
             </span>
           </div>
-          <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm font-medium text-[#64748b] dark:text-slate-400">
+          <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm font-medium text-[#5f6e83] dark:text-slate-400">
             {NAV_LINKS.map((link) => (
               <a key={link.href} href={link.href} className="transition hover:text-[#0f172a] dark:hover:text-white">
                 {link.label}

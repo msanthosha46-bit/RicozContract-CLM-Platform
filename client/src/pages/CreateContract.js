@@ -81,7 +81,12 @@ const CreateContract = () => {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label htmlFor="create-amount" className="block text-sm font-semibold text-slate-700">Amount</label>
-              <input id="create-amount" required type="number" inputMode="decimal" min="0" name="amount" value={formData.amount} onChange={handleChange} className={field} />
+              {/* step="any" because the server takes any non-negative finite
+                  number. `<input type="number">` defaults to step=1, so the HTML
+                  step algorithm marked every decimal a mismatch and the browser
+                  blocked the submit - while inputMode="decimal" on the same
+                  control invited exactly the value it then refused. */}
+              <input id="create-amount" required type="number" inputMode="decimal" min="0" step="any" name="amount" value={formData.amount} onChange={handleChange} className={field} />
             </div>
             <div>
               <label htmlFor="create-currency" className="block text-sm font-semibold text-slate-700">Currency</label>

@@ -5,7 +5,7 @@ const Obligation = require('../models/Obligation');
 const Milestone = require('../models/Milestone');
 const Renewal = require('../models/Renewal');
 const { protect, authorize } = require('../middleware/auth');
-const { employeeContractScope } = require('../utils/access');
+const { employeeContractScope, isPrivileged } = require('../utils/access');
 const { VALID_STATUSES } = require('../utils/contractTransitions');
 const { expiringWindow, EXPIRING_STATUSES } = require('../utils/dateWindow');
 
@@ -78,7 +78,7 @@ router.get('/summary', protect, authorize('Admin', 'Manager'), async (req, res, 
 // the figure agrees with the renewal screen it links to.
 router.get('/dashboard', protect, async (req, res, next) => {
   try {
-    const scope = req.user.role === 'Employee' ? employeeContractScope(req.user._id) : {};
+    const scope = isPrivileged(req.user) ? {} : employeeContractScope(req.user._id);
     const baseFilter = { isArchived: false, ...scope };
 
     const [facet, expiringSoon, recentContracts] = await Promise.all([

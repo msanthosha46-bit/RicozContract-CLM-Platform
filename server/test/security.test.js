@@ -360,6 +360,30 @@ test('an approval that was already decided cannot be decided again', async () =>
   assert.equal(bypass.status, 400);
 });
 
+test('a new approval activates the contract; legacy Approved stays first-class but is never newly produced', async () => {
+  const employee = await createUser({ name: 'Invariant Emp', email: 'invariant.emp@ricoz.test' });
+  const admin = await createUser({ name: 'Invariant Admin', email: 'invariant.admin@ricoz.test', role: 'Admin' });
+  const adminToken = signToken(admin);
+  const contract = await createContract({ title: 'Approved invariant', status: 'Draft', createdBy: employee._id, assignedUser: employee._id });
+
+  const submit = await api('POST', `/api/approvals/submit/${contract._id}`, { token: signToken(employee) });
+  assert.equal(submit.status, 201);
+
+  const decide = await api('PUT', `/api/approvals/${submit.data._id}/action`, { token: adminToken, body: { action: 'Approved' } });
+  assert.equal(decide.status, 200);
+
+  const after = await Contract.findById(contract._id);
+  assert.equal(after.status, 'Active', 'approval activates rather than producing the legacy Approved status');
+
+  // Legacy/imported contracts holding Approved remain fully usable for
+  // reporting, renewal and re-submission (the invariant phase-8 relies on).
+  const { canSubmitForApproval, canRenewContract } = require('../utils/contractTransitions');
+  const { EXPIRING_STATUSES } = require('../utils/dateWindow');
+  assert.equal(canSubmitForApproval('Approved'), true, 'legacy Approved contracts stay submittable');
+  assert.equal(canRenewContract('Approved'), true, 'legacy Approved contracts stay renewable');
+  assert.ok(EXPIRING_STATUSES.includes('Approved'), 'legacy Approved contracts stay counted as expiring');
+});
+
 test('the only active admin cannot be demoted or deactivated', async () => {
   // Isolate the test: remove admins created by earlier tests so the only
   // active admin is the one created below.
