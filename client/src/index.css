@@ -726,3 +726,15 @@
 .dark .ricoz-shell main [class*='shadow-slate-200'] {
 	--tw-shadow-color: rgba(15, 23, 42, 0.45);
 }
+
+/* `shadow-red-100` / `shadow-red-200` behind the red primary actions and logo
+   tiles (topbar Logout, sidebar logo, login/register/reset submit, landing
+   CTAs) resolve to the near-white pinks #fee2e2 / #fecaca in Tailwind and
+   glowed as a pale halo around the red surface in dark mode. Retint them to
+   the same dark elevation used behind the navy CTAs. Global (not shell-
+   scoped): the logo tiles, topbar and auth/landing pages sit outside
+   `.ricoz-shell main`. Light mode keeps the original pink shadows. */
+.dark [class*='shadow-red-100'],
+.dark [class*='shadow-red-200'] {
+	--tw-shadow-color: rgba(15, 23, 42, 0.45);
+}
