@@ -43,12 +43,21 @@ let baseURL;
 let capturedResetLink;
 let employeeToken; // token issued before the password reset
 const originalSendPasswordResetEmail = mailer.sendPasswordResetEmail;
+const originalSendOtpEmail = mailer.sendOtpEmail;
 const originalVerifyGoogleIdToken = googleAuth.verifyGoogleIdToken;
 
 // Stands in for the mailer so no email is ever sent from a test: the link that
 // would have been emailed is captured instead.
 const captureResetLink = async ({ resetLink }) => {
   capturedResetLink = resetLink;
+};
+
+// Captures the one-time code instead of sending it.
+let capturedOtp = null;
+let capturedOtpTo = null;
+const captureOtpEmail = async ({ to, otp }) => {
+  capturedOtp = otp;
+  capturedOtpTo = to;
 };
 
 const api = async (method, url, { body, token } = {}) => {
@@ -97,10 +106,13 @@ test.before(async () => {
 
   // Capture the reset link instead of sending real email during tests.
   mailer.sendPasswordResetEmail = captureResetLink;
+  // Capture the Google verification code instead of sending real email.
+  mailer.sendOtpEmail = captureOtpEmail;
 });
 
 test.after(async () => {
   mailer.sendPasswordResetEmail = originalSendPasswordResetEmail;
+  mailer.sendOtpEmail = originalSendOtpEmail;
   googleAuth.verifyGoogleIdToken = originalVerifyGoogleIdToken;
   if (server) await new Promise((resolve) => server.close(resolve));
   if (mongoose.connection.readyState) {
@@ -160,16 +172,16 @@ test('existing email/password registration, login and JWT access still work', as
   assert.equal(wrongPassword.status, 401);
 });
 
-test('Google sign-in rejects missing and invalid credentials', async () => {
-  const missing = await api('POST', '/api/auth/google', { body: {} });
+test('Google begin rejects missing and invalid credentials', async () => {
+  const missing = await api('POST', '/api/auth/google/begin', { body: {} });
   assert.equal(missing.status, 400);
 
-  const invalid = await api('POST', '/api/auth/google', { body: { credential: 'garbage.token.value' } });
+  const invalid = await api('POST', '/api/auth/google/begin', { body: { credential: 'garbage.token.value' } });
   assert.equal(invalid.status, 401);
   assert.equal(invalid.data.message, 'Google Sign-In could not be verified');
 });
 
-test('Google sign-in enforces verified email, role rules and inactive accounts', async () => {
+test('Google begin only trusts a verified identity and returns no JWT or account', async () => {
   const seenCredentials = [];
   googleAuth.verifyGoogleIdToken = async (credential) => {
     seenCredentials.push(credential);
@@ -185,74 +197,38 @@ test('Google sign-in enforces verified email, role rules and inactive accounts',
       email: 'unverified@ricoz.test',
       email_verified: false
     };
-    const unverified = await api('POST', '/api/auth/google', { body: { credential: 'token-unverified' } });
+    const unverified = await api('POST', '/api/auth/google/begin', { body: { credential: 'token-unverified' } });
     assert.equal(unverified.status, 401);
     assert.match(unverified.data.message, /email could not be verified/);
 
-    // 2) New Google user is created as Employee only.
+    // 2) A valid identity starts the OTP flow: masked email and challenge id,
+    //    never a JWT or any account state.
+    capturedOtp = null;
+    capturedOtpTo = null;
     googleAuth.verifyGoogleIdToken.payload = {
-      sub: 'g-new-user',
-      email: 'google.new@ricoz.test',
+      sub: 'g-begin-user',
+      email: 'Google.New@ricoz.test',
       email_verified: true,
       name: 'Google New'
     };
-    const created = await api('POST', '/api/auth/google', { body: { credential: 'token-new-user' } });
-    assert.equal(created.status, 200);
-    assert.equal(created.data.role, 'Employee');
-    assert.equal(created.data.email, 'google.new@ricoz.test');
-    assert.ok(created.data.token);
+    const began = await api('POST', '/api/auth/google/begin', { body: { credential: 'token-begin' } });
+    assert.equal(began.status, 200);
+    assert.ok(began.data.challengeId);
+    assert.equal(began.data.email, 'g***@ricoz.test', 'the masked email is all the client learns');
+    assert.equal(began.data.expiresIn, 300);
+    assert.equal(began.data.token, undefined, 'no JWT may exist before OTP verification');
+    assert.equal(began.data.googleSub, undefined, 'the verified identity must not leak');
 
+    // 3) The code is sent to the verified address and never returned.
+    assert.equal(capturedOtpTo, 'google.new@ricoz.test');
+    assert.match(String(capturedOtp), /^\d{6}$/, 'the OTP must be exactly six digits');
+    assert.ok(!JSON.stringify(began.data).includes(String(capturedOtp)), 'the OTP must not appear in the response');
+
+    // 4) No user is created during begin.
     const createdUser = await User.findOne({ email: 'google.new@ricoz.test' });
-    assert.equal(createdUser.googleId, 'g-new-user');
-    assert.equal(createdUser.role, 'Employee');
-    assert.ok(!createdUser.password, 'Google users should not get an unnecessary stored password');
+    assert.equal(createdUser, null);
 
-    const createdMe = await api('GET', '/api/users/me', { token: created.data.token });
-    assert.equal(createdMe.status, 200);
-
-    // 3) Existing email account is linked, existing (admin-assigned) role kept.
-    const existingUser = await User.create({
-      name: 'Link Target',
-      email: 'link.me@ricoz.test',
-      password: 'Password123',
-      role: 'Manager'
-    });
-    googleAuth.verifyGoogleIdToken.payload = {
-      sub: 'g-link-existing',
-      email: 'LINK.ME@ricoz.test',
-      email_verified: true,
-      name: 'Link Target'
-    };
-    const linked = await api('POST', '/api/auth/google', { body: { credential: 'token-link' } });
-    assert.equal(linked.status, 200);
-    assert.equal(linked.data.role, 'Manager');
-    const reloaded = await User.findById(existingUser._id);
-    assert.equal(reloaded.googleId, 'g-link-existing');
-    assert.ok(await reloaded.matchPassword('Password123'), 'linking must not change the existing password');
-
-    // 4) Inactive account is rejected.
-    await User.create({
-      name: 'Inactive User',
-      email: 'inactive@ricoz.test',
-      password: 'Password123',
-      status: 'Inactive'
-    });
-    googleAuth.verifyGoogleIdToken.payload = {
-      sub: 'g-inactive',
-      email: 'inactive@ricoz.test',
-      email_verified: true,
-      name: 'Inactive User'
-    };
-    const inactive = await api('POST', '/api/auth/google', { body: { credential: 'token-inactive' } });
-    assert.equal(inactive.status, 401);
-    assert.match(inactive.data.message, /inactive/i);
-
-    assert.deepEqual(seenCredentials, [
-      'token-unverified',
-      'token-new-user',
-      'token-link',
-      'token-inactive'
-    ]);
+    assert.deepEqual(seenCredentials, ['token-unverified', 'token-begin']);
   } finally {
     googleAuth.verifyGoogleIdToken = originalVerifyGoogleIdToken;
   }

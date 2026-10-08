@@ -33,9 +33,25 @@ export const AuthProvider = ({ children }) => {
     return persistUser(data);
   };
 
-  const loginWithGoogle = async (credential) => {
-    const { data } = await API.post('/auth/google', { credential });
+  // Step 1 of Google sign-in: exchange the verified credential for a masked
+  // email and a challenge id. Nothing is persisted and no session exists yet —
+  // the account is only resolved after the emailed code is verified.
+  const beginGoogleOtp = async (credential) => {
+    const { data } = await API.post('/auth/google/begin', { credential });
+    return data;
+  };
+
+  // Step 2: only a verified code may create the session, so persistUser runs
+  // here and nowhere else in the Google flow.
+  const verifyGoogleOtp = async ({ challengeId, otp }) => {
+    const { data } = await API.post('/auth/google/verify-otp', { challengeId, otp });
     return persistUser(data);
+  };
+
+  // Step 3: ask for a fresh code for the same challenge.
+  const resendGoogleOtp = async (challengeId) => {
+    const { data } = await API.post('/auth/google/resend-otp', { challengeId });
+    return data;
   };
 
   const updateProfile = (data) => {
@@ -49,7 +65,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, loginWithGoogle, logout, updateProfile }}>
+    <AuthContext.Provider
+      value={{ user, login, register, beginGoogleOtp, verifyGoogleOtp, resendGoogleOtp, logout, updateProfile }}
+    >
       {children}
     </AuthContext.Provider>
   );

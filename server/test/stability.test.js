@@ -188,7 +188,7 @@ const PRODUCTION_WEB_ORIGIN = 'https://ricoz-contract-clm-platform.vercel.app';
 // A preflight carries no body, so it is issued with fetch directly rather than
 // through call(), which assumes a JSON payload.
 const preflight = (baseURL, origin, { method = 'POST', requestHeaders = 'content-type' } = {}) =>
-  fetch(`${baseURL}/api/auth/google`, {
+  fetch(`${baseURL}/api/auth/google/begin`, {
     method: 'OPTIONS',
     headers: {
       Origin: origin,
@@ -285,7 +285,7 @@ test('a preflight is answered before authentication and rate limiting', async ()
         const res = await preflight(baseURL, PRODUCTION_WEB_ORIGIN);
         assert.equal(res.status, 204);
       }
-      const res = await call(baseURL, 'POST', '/api/auth/google', { body: { credential: 'not.a.token' } });
+      const res = await call(baseURL, 'POST', '/api/auth/google/begin', { body: { credential: 'not.a.token' } });
       assert.notEqual(res.status, 429, 'preflights must not consume rate-limit tokens');
       assert.equal(res.status, 401, 'a bogus Google token is rejected by the route');
     })
@@ -514,7 +514,15 @@ test('the public auth endpoints are all throttled', () => {
   for (const layer of authRoutes.stack) {
     if (layer.route) routes.set(layer.route.path, layer.route.stack.map((l) => l.name));
   }
-  for (const path of ['/register', '/login', '/google', '/forgot-password', '/reset-password']) {
+  for (const path of [
+    '/register',
+    '/login',
+    '/google/begin',
+    '/google/verify-otp',
+    '/google/resend-otp',
+    '/forgot-password',
+    '/reset-password'
+  ]) {
     assert.ok(routes.has(path), `${path} route is missing`);
     assert.ok(
       routes.get(path).includes('rateLimit'),

@@ -5,6 +5,22 @@ const User = require('../models/User');
 const googleAuth = require('../utils/googleAuth');
 const mailer = require('../utils/mailer');
 const createRateLimiter = require('../middleware/rateLimit');
+const GoogleOtpChallenge = require('../models/GoogleOtpChallenge');
+const {
+  OTP_TTL_SECONDS,
+  OTP_TTL_MS,
+  OTP_MAX_ATTEMPTS,
+  RESEND_COOLDOWN_SECONDS,
+  RESEND_COOLDOWN_MS,
+  OTP_MAX_RESENDS,
+  OTP_PATTERN,
+  CHALLENGE_ID_PATTERN,
+  generateOtp,
+  generateChallengeId,
+  hashOtp,
+  otpHashesMatch,
+  maskEmail
+} = require('../utils/googleOtp');
 const {
   RESET_TOKEN_TTL_MINUTES,
   generateResetToken,
@@ -49,10 +65,27 @@ const registerLimiter = createRateLimiter({
   message: 'Too many account requests. Please try again in 15 minutes.'
 });
 
-const googleLimiter = createRateLimiter({
+// Public Google entry points are throttled so the API cannot be used to mass
+// create OTP challenges, to brute-force codes across many challenge ids from
+// one connection, or to hammer Google's token verification. The per-challenge
+// attempt cap (not the button on the client) is the real defence against
+// brute force; these limits are the second layer.
+const googleBeginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 20,
   message: 'Too many Google sign-in attempts. Please try again in 15 minutes.'
+});
+
+const googleVerifyLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: 'Too many verification attempts. Please try again in 15 minutes.'
+});
+
+const googleResendLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many verification code requests. Please try again in 15 minutes.'
 });
 
 // One response for every failed sign-in, so neither the account state nor the
@@ -160,7 +193,66 @@ router.post('/login', loginLimiter, async (req, res, next) => {
   }
 });
 
-router.post('/google', googleLimiter, async (req, res, next) => {
+// The existing Google account resolution: find by googleId OR email, reject
+// inactive accounts, link an existing email account to this Google identity,
+// and create new users as Employees. This runs ONLY after the OTP has been
+// verified; it requires the verified identity (googleSub + email) captured on
+// the challenge, never a browser-supplied value.
+const resolveGoogleUser = async ({ googleSub, email, name }) => {
+  let user = await User.findOne({ $or: [{ googleId: googleSub }, { email }] });
+
+  if (user) {
+    if (user.status === 'Inactive') {
+      const error = new Error('This account is inactive. Contact an administrator.');
+      error.status = 401;
+      error.expose = true;
+      throw error;
+    }
+    if (!user.googleId) {
+      user.googleId = googleSub;
+      await user.save();
+    }
+    return user;
+  }
+
+  try {
+    return await User.create({
+      name: name || email.split('@')[0],
+      email,
+      googleId: googleSub,
+      role: 'Employee'
+    });
+  } catch (error) {
+    // Two verifications may race to create the same brand-new account. Re-fetch
+    // the winner instead of inventing a transaction layer, and continue only if
+    // it really is this verified identity.
+    if (error.code !== 11000) throw error;
+    const winner = await User.findOne({ $or: [{ googleId: googleSub }, { email }] });
+    if (!winner) {
+      const safeError = new Error('Unable to sign in with Google.');
+      safeError.status = 401;
+      safeError.expose = true;
+      throw safeError;
+    }
+    if (winner.status === 'Inactive') {
+      const inactiveError = new Error('This account is inactive. Contact an administrator.');
+      inactiveError.status = 401;
+      inactiveError.expose = true;
+      throw inactiveError;
+    }
+    if (!winner.googleId) {
+      winner.googleId = googleSub;
+      await winner.save();
+    }
+    return winner;
+  }
+};
+
+// Step 1: verify the Google identity, create an OTP challenge bound to it and
+// email the code. No JWT and no session yet; the identity is only captured on
+// the challenge. The same success shape is returned for new and existing
+// emails so the endpoint cannot be used to probe which addresses hold accounts.
+router.post('/google/begin', googleBeginLimiter, async (req, res, next) => {
   const { credential } = req.body || {};
 
   if (!googleAuth.getGoogleClientId()) {
@@ -188,44 +280,172 @@ router.post('/google', googleLimiter, async (req, res, next) => {
     return res.status(401).json({ message: 'Google account email could not be verified' });
   }
 
-  // 3) Find-or-create the user and issue the existing JWT. Database failures
-  //    fall through to the central error handler (no internals exposed).
   try {
     const email = payload.email.toLowerCase();
-    let user = await User.findOne({ $or: [{ googleId: payload.sub }, { email }] });
+    const otp = generateOtp();
+    const challenge = await GoogleOtpChallenge.create({
+      challengeId: generateChallengeId(),
+      googleSub: payload.sub,
+      email,
+      name: typeof payload.name === 'string' ? payload.name.trim() : '',
+      otpHash: hashOtp(otp),
+      expiresAt: new Date(Date.now() + OTP_TTL_MS),
+      attempts: 0,
+      maxAttempts: OTP_MAX_ATTEMPTS,
+      // The cooldown announced to the client starts with the first code.
+      resendAvailableAt: new Date(Date.now() + RESEND_COOLDOWN_MS),
+      resendCount: 0
+    });
 
-    if (user && user.status === 'Inactive') {
-      return res.status(401).json({ message: 'This account is inactive. Contact an administrator.' });
+    try {
+      await mailer.sendOtpEmail({ to: email, otp, expiresInMinutes: OTP_TTL_SECONDS / 60 });
+    } catch (error) {
+      // describeEmailError is the only sanitised form: transports tried and
+      // their reasons, never the code, a credential, a key or the recipient.
+      console.error('Google sign-in verification code email could not be sent:', mailer.describeEmailError(error));
+      await GoogleOtpChallenge.deleteOne({ _id: challenge._id }).catch(() => {});
+      return res.status(503).json({ message: 'Unable to send the verification code. Please try again.' });
     }
 
-    if (!user) {
-      // New Google users always become Employees: they can never self-register
-      // as Admin or Manager. Only the verified Google identity is stored.
-      user = await User.create({
-        name: payload.name || email.split('@')[0],
-        email,
-        googleId: payload.sub,
-        role: 'Employee'
-      });
-    } else if (!user.googleId) {
-      // Existing email account: safely link it to this Google identity.
-      user.googleId = payload.sub;
-      await user.save();
-    }
-
+    // Only what the client needs for the next step. The code, the google sub,
+    // any role and any account existence are all intentionally absent.
     return res.json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      department: user.department,
-      status: user.status,
-      preferences: user.preferences,
-      token: generateToken(user)
+      challengeId: challenge.challengeId,
+      email: maskEmail(email),
+      expiresIn: OTP_TTL_SECONDS,
+      resendAvailableIn: RESEND_COOLDOWN_SECONDS
     });
   } catch (error) {
     next(error);
   }
+});
+
+// Step 2: verify the OTP the user entered against the challenge bound to the
+// verified Google identity. A client-supplied email is deliberately ignored;
+// the challenge's googleSub/email are the only identity used.
+router.post('/google/verify-otp', googleVerifyLimiter, async (req, res, next) => {
+  const { challengeId, otp } = req.body || {};
+
+  if (typeof challengeId !== 'string' || !CHALLENGE_ID_PATTERN.test(challengeId)) {
+    return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+  }
+  if (typeof otp !== 'string' || !OTP_PATTERN.test(otp)) {
+    return res.status(400).json({ message: 'Invalid verification code. Please try again.' });
+  }
+
+  // Read once so each failure can be explained without revealing internals.
+  const challenge = await GoogleOtpChallenge.findOne({ challengeId });
+  if (!challenge || challenge.usedAt) {
+    return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+  }
+  if (challenge.expiresAt.getTime() <= Date.now()) {
+    return res.status(400).json({ message: 'This verification code has expired. Request a new code.' });
+  }
+  if (challenge.attempts >= challenge.maxAttempts) {
+    return res.status(400).json({ message: 'Too many attempts. Request a new verification code.' });
+  }
+
+  // Atomically consume one attempt. The filter refuses a challenge that was
+  // already used, just expired, or has already hit the attempt cap.
+  const updated = await GoogleOtpChallenge.findOneAndUpdate(
+    {
+      challengeId,
+      usedAt: null,
+      expiresAt: { $gt: new Date() },
+      attempts: { $lt: OTP_MAX_ATTEMPTS }
+    },
+    { $inc: { attempts: 1 } },
+    { new: true }
+  );
+  if (!updated) {
+    return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+  }
+
+  // Constant-time comparison against the stored hash.
+  if (!otpHashesMatch(otp, updated.otpHash)) {
+    if (updated.attempts >= updated.maxAttempts) {
+      return res.status(400).json({ message: 'Too many attempts. Request a new verification code.' });
+    }
+    return res.status(400).json({ message: 'Invalid verification code. Please try again.' });
+  }
+
+  // Success: consume the challenge NOW (single use), then resolve the account.
+  await GoogleOtpChallenge.updateOne({ _id: updated._id }, { usedAt: new Date() });
+
+  let user;
+  try {
+    user = await resolveGoogleUser({
+      googleSub: updated.googleSub,
+      email: updated.email,
+      name: updated.name
+    });
+  } catch (error) {
+    if (error.status >= 400 && error.status < 500 && error.expose) {
+      return res.status(error.status).json({ message: error.message });
+    }
+    return next(error);
+  }
+
+  // The existing JWT and session behaviour, identical to every other login path.
+  return res.json({
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    department: user.department,
+    status: user.status,
+    preferences: user.preferences,
+    token: generateToken(user)
+  });
+});
+
+// Step 3: re-send a code for the same challenge. The old code is only
+// invalidated after a successful send, so a transport failure never leaves the
+// user with no working code (mirrors the password-reset mailer behaviour).
+router.post('/google/resend-otp', googleResendLimiter, async (req, res, next) => {
+  const { challengeId } = req.body || {};
+
+  if (typeof challengeId !== 'string' || !CHALLENGE_ID_PATTERN.test(challengeId)) {
+    return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+  }
+
+  const challenge = await GoogleOtpChallenge.findOne({ challengeId });
+  if (!challenge || challenge.usedAt) {
+    return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+  }
+  if (challenge.expiresAt.getTime() <= Date.now()) {
+    return res.status(400).json({ message: 'This verification code has expired. Request a new code.' });
+  }
+  if (challenge.resendCount >= OTP_MAX_RESENDS) {
+    return res.status(429).json({ message: 'Too many verification codes requested. Please try again later.' });
+  }
+
+  const waitMs = challenge.resendAvailableAt.getTime() - Date.now();
+  if (waitMs > 0) {
+    res.setHeader('Retry-After', String(Math.ceil(waitMs / 1000)));
+    return res.status(429).json({ message: 'Please wait before requesting another verification code.' });
+  }
+
+  const otp = generateOtp();
+  try {
+    await mailer.sendOtpEmail({ to: challenge.email, otp, expiresInMinutes: OTP_TTL_SECONDS / 60 });
+  } catch (error) {
+    console.error('Google sign-in verification code resend could not be sent:', mailer.describeEmailError(error));
+    return res.status(503).json({ message: 'Unable to send the verification code. Please try again.' });
+  }
+
+  await GoogleOtpChallenge.updateOne(
+    { _id: challenge._id },
+    {
+      otpHash: hashOtp(otp),
+      expiresAt: new Date(Date.now() + OTP_TTL_MS),
+      attempts: 0,
+      resendCount: challenge.resendCount + 1,
+      resendAvailableAt: new Date(Date.now() + RESEND_COOLDOWN_MS)
+    }
+  );
+
+  return res.json({ message: 'New verification code sent.', resendAvailableIn: RESEND_COOLDOWN_SECONDS });
 });
 
 router.post('/forgot-password', forgotPasswordLimiter, async (req, res, next) => {

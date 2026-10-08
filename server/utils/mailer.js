@@ -420,6 +420,76 @@ const sendPasswordResetEmail = async (args) => {
   throw error;
 };
 
+// Pure message builder for the Google sign-in one-time code. Kept side-effect
+// free (like buildPasswordResetMessage) so the rendered MIME can be asserted in
+// tests without sending mail. The code is never logged by anything in this
+// module: it only ever reaches the message body and the transport.
+const buildOtpMessage = ({ to, otp, expiresInMinutes }) => {
+  const minutes = Number.isFinite(expiresInMinutes) ? expiresInMinutes : 5;
+  return {
+    from: process.env.EMAIL_FROM || process.env.SMTP_USER || DEFAULT_FROM,
+    to,
+    subject: 'Your RicozContract verification code',
+    text: [
+      'Your RicozContract sign-in verification code is:',
+      '',
+      otp,
+      '',
+      `This code expires in ${minutes} minutes and can only be used once.`,
+      'If you did not request this code, you can safely ignore this email.'
+    ].join('\n'),
+    html: `
+      <div style="font-family: Arial, Helvetica, sans-serif; max-width: 520px; margin: 0 auto; color: #0f172a;">
+        <h2 style="margin-bottom: 8px;">Your verification code</h2>
+        <p>Use the code below to finish signing in to RicozContract.</p>
+        <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 16px 0;">${otp}</p>
+        <p style="color: #475569; font-size: 13px;">
+          This code expires in ${minutes} minutes and can only be used once.<br/>
+          If you did not request this code, you can safely ignore this email.
+        </p>
+      </div>`
+  };
+};
+
+// Tries each configured transport in order (Resend first, SMTP as the fallback)
+// exactly like sendPasswordResetEmail. The caller's code is not touched by this
+// function: when every transport fails the stored OTP hash stays exactly as
+// valid as it was, so a resend or a retry can still use it.
+const sendOtpEmail = async (args) => {
+  const chain = resolveProviderChain();
+  if (!chain.length) {
+    const error = new Error(
+      'No email transport is configured. Set RESEND_API_KEY (preferred) or SMTP_HOST for verification code email.'
+    );
+    error.code = 'SMTP_NOT_CONFIGURED';
+    error.provider = null;
+    throw error;
+  }
+
+  const message = buildOtpMessage(args);
+  const failures = [];
+
+  for (const provider of chain) {
+    try {
+      return await (provider === 'resend' ? sendViaResend(message) : sendViaSmtp(message));
+    } catch (error) {
+      failures.push({ provider, error });
+    }
+  }
+
+  if (failures.length === 1) throw failures[0].error;
+
+  const error = new Error('Every configured email transport failed to send the verification code email');
+  error.code = 'EMAIL_SEND_FAILED';
+  error.attempts = failures.map(({ provider, error: cause }) => ({
+    provider,
+    code: cause.code || 'UNKNOWN',
+    status: cause.statusCode || null,
+    reason: sanitizeForLog(cause.detail || cause.message)
+  }));
+  throw error;
+};
+
 module.exports = {
   isSmtpConfigured,
   isResendConfigured,
@@ -429,8 +499,10 @@ module.exports = {
   extractAddress,
   buildTransportOptions,
   buildPasswordResetMessage,
+  buildOtpMessage,
   buildResendPayload,
   sanitizeForLog,
   describeEmailError,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  sendOtpEmail
 };
