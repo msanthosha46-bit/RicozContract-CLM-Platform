@@ -10,6 +10,10 @@ const protect = async (req, res, next) => {
       // Pin the algorithm so a token can never select a different family.
       decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     } catch (error) {
+      // The 401 body stays deliberately generic, so record the error class
+      // (e.g. TokenExpiredError vs JsonWebTokenError) to keep a real
+      // occurrence diagnosable. Never log the token, the secret or any claim.
+      console.warn('Bearer token rejected:', error.name);
       return res.status(401).json({ message: 'Not authorized, token failed' });
     }
 
