@@ -155,6 +155,58 @@ for (const viewportWidth of VIEWPORTS) {
   });
 }
 
+/* ------------------------------------------------------------------ *
+ * Account (profile) menu.
+ *
+ * Same overlay contract as the notification popup, with one important
+ * difference: on a phone the account menu sits to the LEFT of the bell, so
+ * its old `absolute right-0` was 44px (bell 40px + gap 4px) inboard of the
+ * px-4 header content edge. Clamped at `calc(100vw - 2rem)` that pushed its
+ * left edge to -4px on a 360px phone (-28px at 320px), where the page's
+ * `overflow-x: clip` cut it off. It is now a viewport-anchored overlay
+ * (`fixed right-4`) below md, so the clamp yields the intended 1rem margin
+ * on both sides, and reverts to the trigger (`absolute right-0`) at md+.
+ * ------------------------------------------------------------------ */
+
+const accountMenuBox = (viewportWidth) => {
+  const className = overlayClassName(topbarSource, 'account-menu');
+  const right = utility(className, 'right', viewportWidth);
+  const width = utility(className, 'w', viewportWidth);
+  return { width, right: viewportWidth - right, left: viewportWidth - right - width };
+};
+
+test('the account menu is viewport-anchored on phones and clamped to the trigger at md', () => {
+  const className = overlayClassName(topbarSource, 'account-menu');
+  assert.match(className, /(?:^|\s)fixed(?:\s|$)/);
+  assert.match(className, /(?:^|\s)right-4(?:\s|$)/);
+  assert.match(className, /(?:^|\s)md:absolute(?:\s|$)/);
+  assert.match(className, /(?:^|\s)md:right-0(?:\s|$)/);
+  assert.match(className, /(?:^|\s)z-50(?:\s|$)/);
+});
+
+test('the account menu is height-capped and scrolls its own content', () => {
+  const className = overlayClassName(topbarSource, 'account-menu');
+  assert.match(className, /max-h-\[calc\(100vh_-_5rem\)\]/);
+  assert.match(className, /overflow-y-auto/);
+});
+
+for (const viewportWidth of VIEWPORTS) {
+  test(`the account menu fits a ${viewportWidth}px viewport`, () => {
+    assertContained('the account menu', accountMenuBox(viewportWidth), viewportWidth);
+  });
+}
+
+test('the account menu geometry would still be caught on the old trigger anchor', () => {
+  // Pre-fix the box was `absolute right-0` under the account trigger, whose
+  // right edge is the bell (40px) + gap-1 (4px) inboard of the px-4 edge.
+  // At 360px its left edge was -4px; the fix must clear the safe margin.
+  const viewportWidth = 360;
+  const oldRightEdge = viewportWidth - 16 - 44;
+  const width = accountMenuBox(viewportWidth).width;
+  assert.ok(oldRightEdge - width < 0, 'expected the old trigger anchor to overflow at 360px');
+  assert.ok(accountMenuBox(viewportWidth).left >= SAFE_MARGIN, 'the fixed overlay must not overflow');
+});
+
 test('the measurements at the reported widths', (t) => {
   for (const viewportWidth of REPORTED_WIDTHS) {
     const popup = popupBox(viewportWidth);

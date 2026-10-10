@@ -351,9 +351,9 @@ const Topbar = ({ onMenuClick }) => {
 								aria-label="Account"
 								data-overlay="account-menu"
 								onKeyDown={handleMenuKeyDown}
-								className="absolute right-0 z-50 mt-2 w-[min(19rem,calc(100vw_-_2rem))] origin-top-right rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-xl dark:border-slate-700 dark:bg-[#1a2436]"
+								className="fixed right-4 top-16 z-50 mt-2 max-h-[calc(100vh_-_5rem)] w-[min(19rem,calc(100vw_-_2rem))] origin-top-right overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-xl dark:border-slate-700 dark:bg-[#1a2436] sm:top-20 md:absolute md:right-0 md:top-auto"
 							>
-								<div className="flex items-center gap-3 rounded-xl px-2 py-2.5">
+								<div className="flex items-center gap-3 rounded-xl px-2 py-2">
 									<span
 										aria-hidden="true"
 										className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0f1d3a] text-xs font-black text-white"
@@ -370,17 +370,17 @@ const Topbar = ({ onMenuClick }) => {
 									</span>
 								</div>
 
-								<span className="mx-2 my-1 block rounded-full bg-[#fff0f0] px-2.5 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-[#d51d29] dark:bg-[#d51d29]/15 dark:text-[#ff8a90]">
+								<span className="mx-2 mb-1 block rounded-full bg-[#fff0f0] px-2.5 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-[#d51d29] dark:bg-[#d51d29]/15 dark:text-[#ff8a90]">
 									{roleLabel(user?.role)}
 								</span>
 
-								<div className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
+								<div className="my-0.5 h-px bg-slate-200 dark:bg-slate-700" />
 
 								<Link
 									role="menuitem"
 									to="/profile"
 									onClick={closeMenu}
-									className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#243048]"
+									className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#243048]"
 								>
 									<UserIcon className="h-4 w-4 shrink-0" aria-hidden="true" /> Profile
 								</Link>
@@ -390,7 +390,7 @@ const Topbar = ({ onMenuClick }) => {
 										role="menuitem"
 										to="/settings"
 										onClick={closeMenu}
-										className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#243048]"
+										className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#243048]"
 									>
 										<Settings className="h-4 w-4 shrink-0" aria-hidden="true" /> Settings
 									</Link>
@@ -398,16 +398,16 @@ const Topbar = ({ onMenuClick }) => {
 
 								{/* Phone-only: the header cannot fit these two inline. */}
 								<div className="md:hidden">
-									<ThemeToggle variant="solid" className="w-full justify-start gap-2.5 px-2.5" />
+									<ThemeToggle variant="solid" label />
 								</div>
 
-								<div className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
+								<div className="my-0.5 h-px bg-slate-200 dark:bg-slate-700" />
 
 								<button
 									type="button"
 									role="menuitem"
 									onClick={handleLogout}
-									className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+									className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-bold text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
 								>
 									<LogOut className="h-4 w-4 shrink-0" aria-hidden="true" /> Logout
 								</button>
