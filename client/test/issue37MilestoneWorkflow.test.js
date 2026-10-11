@@ -379,30 +379,22 @@ test('rows, progress and counts render from a successful load', async () => {
 });
 
 /* ------------------------------------------------------------------ *
- * Issue 24's stale-option guards are still in place
+ * An archived contract is read-only; a deactivated assignee is not
  * ------------------------------------------------------------------ */
 
-test('a milestone on an archived contract keeps its own contract in the edit form', async () => {
+test('an archived-contract milestone offers no Edit action', async () => {
   const target = milestone({ title: 'Closed out deal', contract: ARCHIVED_CONTRACT, assignedTo: PEOPLE[0] });
   const { container, root } = await renderAs('Manager', { initialRows: [target] });
   mounted.push(root);
 
-  await click(editButtonFor(container, 'Closed out deal'));
-  await settled();
-
-  const form = body().querySelector('#milestone-edit-form');
-  assert.ok(form, 'the edit form should open');
-  const [contractSelect, peopleSelect] = form.querySelectorAll('select');
-  const labels = Array.from(contractSelect.options).map((o) => o.textContent);
-
-  assert.ok(labels.some((l) => /CT-009/.test(l)), 'the milestone\'s own contract must be listed');
-  assert.equal(
-    contractSelect.value,
-    'c9',
-    'without the guard the browser resolves the value to the first contract'
+  assert.match(body().textContent, /Closed out deal/, 'the row is still shown read-only');
+  assert.ok(
+    container.querySelector('button[aria-label="View Closed out deal"]'),
+    'the read-only View stays'
   );
-
-  assert.equal(peopleSelect.value, 'u1', 'the active assignee resolves normally');
+  assert.equal(editButtonFor(container, 'Closed out deal'), null, 'no Edit for an archived contract');
+  const actions = buttonsMatching(container, /^(Start|Complete)$/i).map((b) => b.textContent.trim());
+  assert.ok(actions.length >= 1, 'the status quick actions survive, since status-only updates are still permitted');
 });
 
 test('a milestone with a deactivated assignee stays editable', async () => {
@@ -430,31 +422,14 @@ test('a milestone with a deactivated assignee stays editable', async () => {
   );
 });
 
-test('an archived-contract milestone cannot be moved to another contract', async () => {
+test('an archived-contract milestone cannot be opened for editing', async () => {
   const target = milestone({ title: 'Closed out deal', contract: ARCHIVED_CONTRACT, assignedTo: PEOPLE[0] });
   const { container, root } = await renderAs('Manager', { initialRows: [target] });
   mounted.push(root);
 
-  await click(editButtonFor(container, 'Closed out deal'));
-  await settled();
-
-  const form = body().querySelector('#milestone-edit-form');
-  const [contractSelect] = form.querySelectorAll('select');
-  assert.equal(contractSelect.disabled, true, 'a milestone cannot be moved between contracts from this form');
-  assert.equal(contractSelect.value, 'c9');
-
-  const titleInput = form.querySelector('input[placeholder="Title"]');
-  Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set.call(titleInput, 'Renamed');
-  titleInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  await settled();
-
-  await submit(form);
-  await settled();
-
-  const put = calls.find((c) => c.method === 'put');
-  assert.ok(put, 'renaming should still be attempted');
-  assert.equal(put.body.contract, 'c9', 'the payload carries the milestone\'s real contract');
-  assert.equal(put.body.title, 'Renamed');
+  assert.equal(editButtonFor(container, 'Closed out deal'), null, 'there is no Edit control to press');
+  assert.equal(body().querySelector('#milestone-edit-form'), null, 'and no form to submit');
+  assert.equal(calls.filter((c) => c.method === 'put').length, 0, 'no update is attempted');
 });
 
 /* ------------------------------------------------------------------ *

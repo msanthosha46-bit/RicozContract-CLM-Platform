@@ -125,7 +125,7 @@ const Reports = () => {
         <div>
           <p className="ricoz-eyebrow">Insights</p>
           <h1 className="text-3xl font-black tracking-[-0.06em] text-[#0f172a] sm:text-4xl">Reports &amp; analytics</h1>
-          <p className="mt-2 max-w-2xl text-slate-500">Counts are drawn from every non-archived contract. Select a row to open the matching list.</p>
+          <p className="mt-2 max-w-2xl text-slate-500">Contract metrics reflect non-archived contracts. Renewal history includes records retained from archived contracts. Select a row to open the matching list.</p>
         </div>
         <button
           type="button"

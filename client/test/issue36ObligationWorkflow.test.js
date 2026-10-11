@@ -391,10 +391,10 @@ test('an obligation whose assignee is still active is unchanged and not duplicat
 });
 
 /* ------------------------------------------------------------------ *
- * Defect 3: an obligation on an archived contract names its own contract
+ * An obligation on an archived contract is read-only
  * ------------------------------------------------------------------ */
 
-test('the contract select offers an archived contract that is missing from the list', async () => {
+test('an obligation on an archived contract offers no Edit action', async () => {
   const target = obligation({
     title: 'Closed out deal',
     contract: ARCHIVED_CONTRACT,
@@ -403,25 +403,21 @@ test('the contract select offers an archived contract that is missing from the l
   const { container, root } = await renderAs('Manager', { initialRows: [target] });
   mounted.push(root);
 
-  await click(editButtonFor(container, 'Closed out deal'));
-  await settled();
-
-  const [contractSelect] = editSelects();
-  const labels = Array.from(contractSelect.options).map((o) => o.textContent);
-
+  assert.match(body().textContent, /Closed out deal/, 'the row is still shown read-only');
   assert.ok(
-    labels.some((l) => /CT-009/.test(l)),
-    `the obligation's own contract must be listed, saw ${JSON.stringify(labels)}`
+    container.querySelector('button[aria-label="View Closed out deal"]'),
+    'the read-only View stays'
   );
-  assert.equal(
-    contractSelect.value,
-    'c9',
-    'the defect: with no matching option the browser resolved the value to the first contract'
+  assert.equal(editButtonFor(container, 'Closed out deal'), null, 'no Edit for an archived contract');
+  const actions = buttonsMatching(container, /^(Start|Complete)$/i).map((b) => b.textContent.trim());
+  assert.ok(
+    actions.includes('Start') && actions.includes('Complete'),
+    'the status quick actions survive, since status-only updates are still permitted'
   );
 });
 
 test('the live contract list order is preserved and nothing is duplicated', async () => {
-  const target = obligation({ contract: ARCHIVED_CONTRACT, assignedTo: PEOPLE[0] });
+  const target = obligation({ contract: CONTRACTS[0], assignedTo: PEOPLE[0] });
   const { container, root } = await renderAs('Manager', { initialRows: [target] });
   mounted.push(root);
 
@@ -429,10 +425,9 @@ test('the live contract list order is preserved and nothing is duplicated', asyn
   await settled();
 
   const [contractSelect] = editSelects();
-  assert.equal(contractSelect.options.length, CONTRACTS.length + 1, 'both live contracts plus the archived one');
+  assert.equal(contractSelect.options.length, CONTRACTS.length, 'one option per live contract, nothing appended');
   assert.match(contractSelect.options[0].textContent, /CT-001/, 'existing options keep their order');
   assert.match(contractSelect.options[1].textContent, /CT-002/);
-  assert.match(contractSelect.options[2].textContent, /CT-009/, 'the archived one is appended, not swapped in');
 });
 
 test('a live contract obligation is not given a duplicate option', async () => {
@@ -448,7 +443,7 @@ test('a live contract obligation is not given a duplicate option', async () => {
   assert.equal(contractSelect.value, 'c2');
 });
 
-test('an archived-contract obligation keeps its own contract through a submit', async () => {
+test('an archived-contract obligation cannot be opened for editing', async () => {
   const target = obligation({
     title: 'Closed out deal',
     contract: ARCHIVED_CONTRACT,
@@ -457,30 +452,9 @@ test('an archived-contract obligation keeps its own contract through a submit', 
   const { container, root } = await renderAs('Manager', { initialRows: [target] });
   mounted.push(root);
 
-  await click(editButtonFor(container, 'Closed out deal'));
-  await settled();
-
-  const form = editForm();
-  const [contractSelect] = editSelects();
-  assert.equal(contractSelect.disabled, true, 'an obligation cannot be moved between contracts from this form');
-  assert.equal(contractSelect.value, 'c9', 'the form must display the contract the obligation belongs to');
-
-  setValue(form.querySelector('input[placeholder="Title"]'), 'Renamed');
-  setValue(form.querySelector('input[type="date"]'), '2026-12-01');
-  await settled();
-
-  await submit(form);
-  await settled();
-
-  const put = calls.find((c) => c.method === 'put');
-  assert.ok(put, 'renaming should still be attempted');
-  assert.equal(
-    put.body.contract,
-    'c9',
-    'the payload must carry the obligation\'s real contract, never the first option'
-  );
-  assert.equal(put.body.title, 'Renamed');
-  assert.equal(put.body.dueDate, '2026-12-01');
+  assert.equal(editButtonFor(container, 'Closed out deal'), null, 'there is no Edit control to press');
+  assert.equal(editForm(), null, 'and so no detail form that could be rejected');
+  assert.equal(calls.filter((c) => c.method === 'put').length, 0, 'no update is attempted');
 });
 
 /* ------------------------------------------------------------------ *

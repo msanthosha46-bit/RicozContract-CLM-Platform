@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const googleAuth = require('../utils/googleAuth');
 const mailer = require('../utils/mailer');
@@ -28,16 +27,7 @@ const {
   buildResetLink,
   validatePassword
 } = require('../utils/passwordReset');
-
-// tokenVersion travels inside the JWT so sessions issued before a password
-// reset can be revoked by the auth middleware.
-const generateToken = (user) => {
-  return jwt.sign(
-    { id: user._id, tokenVersion: user.tokenVersion || 0 },
-    process.env.JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-};
+const { generateToken } = require('../utils/sessionToken');
 
 const forgotPasswordLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,

@@ -56,7 +56,10 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = (data) => {
     if (!user) return null;
-    return persistUser({ ...user, ...data, token: user.token });
+    // persistUser keeps the current token unless the server rotated it: a
+    // password change revokes the old session and answers with a fresh one,
+    // which must replace the stored token instead of being discarded.
+    return persistUser({ ...user, ...data });
   };
 
   const logout = () => {

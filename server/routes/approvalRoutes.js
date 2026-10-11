@@ -87,17 +87,39 @@ router.put('/:id/action', protect, authorize('Admin', 'Manager'), async (req, re
       return res.status(409).json({ message: `This contract cannot be decided in state '${contract.status}' (must be Pending Approval)` });
     }
 
-    approval.status = action;
-    approval.comments = comments;
-    approval.approver = req.user._id;
-    approval.decisionDate = new Date();
-    await approval.save();
+    // The decision is written as a single compare-and-set, repeating
+    // `status: 'Pending'` in the write filter - the same claim amendmentRoutes.js
+    // and expiryUpdater.js use, and for the same reason. Every rule above is a
+    // READ, so a plain read-then-write leaves a window between them: two
+    // approvers (or one double-submitting) both read Pending, both pass the
+    // checks, both write, and the contract is decided twice - one decision
+    // overwriting the other and both "Contract Approved"/"Contract Rejected"
+    // entries landing in the audit trail for a single request. Matching on
+    // `status: 'Pending'` inside the atomic write makes the second caller match
+    // nothing, so exactly one decision can ever be recorded.
+    const decided = await Approval.findOneAndUpdate(
+      { _id: approval._id, status: 'Pending' },
+      {
+        $set: {
+          status: action,
+          comments,
+          approver: req.user._id,
+          decisionDate: new Date()
+        }
+      },
+      { new: true }
+    );
+    if (!decided) {
+      return res.status(409).json({ message: 'This approval request has already been decided' });
+    }
 
+    // The contract is written only after the request has been claimed, so a
+    // losing concurrent caller never touches it.
     contract.status = action === 'Approved' ? 'Active' : 'Rejected';
     await contract.save();
 
     await logActivity(req.user._id, `Contract ${action}`, approval.contract, `Approval decision: ${action}. Comments: ${comments || 'None'}`);
-    res.json(approval);
+    res.json(decided);
   } catch (error) {
     next(error);
   }

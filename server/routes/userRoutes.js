@@ -5,6 +5,7 @@ const { USER_ROLES, USER_STATUSES } = User;
 const { protect, authorize } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
 const { validatePassword } = require('../utils/passwordReset');
+const { generateToken } = require('../utils/sessionToken');
 
 const publicUser = (user) => ({
   _id: user._id,
@@ -25,14 +26,35 @@ router.put('/me', protect, async (req, res, next) => {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    if (req.body.name) user.name = req.body.name;
+    // Mirror the register rule: a name, when supplied, must be a non-empty
+    // string. The previous `if (req.body.name)` swallowed an empty string while
+    // the route still answered 200, so the Profile page reported a successful
+    // save that persisted nothing and then displayed the blank field it had
+    // submitted next to the account's real (unchanged) name. Non-string values
+    // must not be coerced either - left to the schema, Mongoose would cast 5 or
+    // true into "5"/"true" and save it.
+    if (req.body.name !== undefined) {
+      if (typeof req.body.name !== 'string' || !req.body.name.trim()) {
+        return res.status(400).json({ message: 'Name is required' });
+      }
+      user.name = req.body.name;
+    }
     if (req.body.department !== undefined) user.department = req.body.department;
     if (req.body.preferences && typeof req.body.preferences === 'object') {
       user.preferences = { ...user.preferences.toObject?.() || user.preferences, ...req.body.preferences };
     }
 
+    // Changing the password is the same session-revoking event as the reset
+    // flow: sessions issued under the old credential are invalidated, and the
+    // caller gets a fresh token in this response so the change does not log
+    // them out. Only the affected user's version moves; every other account's
+    // sessions are untouched.
+    let passwordChanged = false;
     if (req.body.newPassword) {
-      if (!req.body.currentPassword || !(await user.matchPassword(req.body.currentPassword))) {
+      // An account created through Google has no password hash. bcrypt throws
+      // on an undefined hash ("Illegal arguments"), which surfaced as an opaque
+      // 500; there is simply no password to confirm, which is a 400.
+      if (!user.password || !req.body.currentPassword || !(await user.matchPassword(req.body.currentPassword))) {
         return res.status(400).json({ message: 'Current password is incorrect' });
       }
       const passwordError = validatePassword(req.body.newPassword);
@@ -40,10 +62,16 @@ router.put('/me', protect, async (req, res, next) => {
         return res.status(400).json({ message: passwordError });
       }
       user.password = req.body.newPassword;
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
+      passwordChanged = true;
     }
 
     await user.save();
-    res.json(publicUser(user));
+    res.json(
+      passwordChanged
+        ? { ...publicUser(user), token: generateToken(user) }
+        : publicUser(user)
+    );
   } catch (error) {
     next(error);
   }
@@ -112,9 +140,29 @@ router.put('/:id/role', protect, authorize('Admin'), asyncHandler(async (req, re
     }
   }
 
+  const previousRole = user.role;
+  const previousStatus = user.status;
   if (role !== undefined) user.role = role;
   if (status !== undefined) user.status = status;
   await user.save();
+
+  // The census above is a READ, so it is not enough under concurrency: two
+  // admins demoting or deactivating themselves at the same moment each observe
+  // the other as an open slot and both commit, leaving the workspace with zero
+  // administrators and no API path back (registration can only create
+  // Employees). Re-count after the write and undo this request if it was the one
+  // that emptied the census. The request whose write lands last always observes
+  // the fully-applied state, so at least one active administrator survives.
+  if (user.role !== 'Admin' || user.status !== 'Active') {
+    const activeAdmins = await User.countDocuments({ role: 'Admin', status: 'Active' });
+    if (activeAdmins === 0) {
+      user.role = previousRole;
+      user.status = previousStatus;
+      await user.save();
+      return res.status(400).json({ message: 'Cannot demote or deactivate the only active administrator' });
+    }
+  }
+
   res.json({ message: 'User updated successfully', user: publicUser(user) });
 }));
 

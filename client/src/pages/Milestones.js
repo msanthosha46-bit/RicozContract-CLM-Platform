@@ -347,7 +347,7 @@ const Milestones = () => {
                         >
                           <Eye className="h-3.5 w-3.5" /> View
                         </button>
-                        {canManage && (
+                        {canManage && !milestone.contract?.isArchived && (
                           <button type="button" onClick={() => openEdit(milestone)} aria-label={`Edit ${milestone.title}`} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                             Edit
                           </button>
@@ -418,7 +418,7 @@ const Milestones = () => {
             <input required type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
             <textarea placeholder="Description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
             <select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })} className="w-full rounded-xl border border-slate-200 p-3 text-sm">
-              {statusOptionsFor(editForm.status).map((status) => <option key={status} value={status}>{status}</option>)}
+              {statusOptionsFor(editTarget?.status).map((status) => <option key={status} value={status}>{status}</option>)}
             </select>
           </form>
         )}

@@ -6,7 +6,7 @@ const Renewal = require('../models/Renewal');
 const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
 const { canRenewContract, RENEWABLE_FROM } = require('../utils/contractTransitions');
-const { expiringWindow, daysRemainingBetween, EXPIRING_STATUSES } = require('../utils/dateWindow');
+const { expiringWindow, daysRemainingBetween, EXPIRING_STATUSES, startOfUtcDay } = require('../utils/dateWindow');
 
 const WINDOWS = ['30', '60', '90'];
 
@@ -135,6 +135,17 @@ router.post('/renew/:contractId', protect, authorize('Admin', 'Manager'), async 
     }
     if (parsedEndDate <= contract.endDate) {
       return res.status(400).json({ message: 'The renewal date must be after the current end date' });
+    }
+    // A lapsed contract's current end date is already in the past, so the check
+    // above can be satisfied by a new end date that is also in the past. That
+    // would leave the contract Active with endDate < today's UTC midnight, which
+    // the hourly expiry job then flips straight back to Expired: the caller is
+    // told "renewed" and the contract silently lapses again. The renewal dialog
+    // floors a lapsed contract at tomorrow (client utils/date.js
+    // renewalFloorDate), so mirror that here -- the server is the write-side
+    // authority and must not accept a date the workflow's own floor rejects.
+    if (parsedEndDate <= startOfUtcDay(new Date())) {
+      return res.status(400).json({ message: 'The renewal date must be in the future' });
     }
 
     const oldEndDate = contract.endDate;

@@ -9,6 +9,11 @@ const ApprovalRequests = () => {
   const [comments, setComments] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Whether the queue has actually been READ. An empty queue and a failed read
+  // both leave `requests` empty, and only one of them may be reported as "No
+  // pending approvals". A decision conflict (409) re-reads the queue, so the
+  // empty state tracks the last read rather than the last message.
+  const [requestsLoaded, setRequestsLoaded] = useState(false);
   // Keyed by request id so only the row being decided shows a spinner, and a
   // second click on the same row cannot submit a duplicate decision.
   const [deciding, setDeciding] = useState({});
@@ -18,8 +23,10 @@ const ApprovalRequests = () => {
       setLoading(true);
       const { data } = await API.get('/approvals/pending');
       setRequests(data);
+      setRequestsLoaded(true);
       setError('');
     } catch (err) {
+      setRequestsLoaded(false);
       setError(err.response?.data?.message || 'Unable to load approval requests');
     } finally {
       setLoading(false);
@@ -38,7 +45,19 @@ const ApprovalRequests = () => {
       setComments((current) => ({ ...current, [id]: '' }));
       await fetchApprovals();
     } catch (err) {
-      setError(err.response?.data?.message || 'Unable to update approval');
+      const message = err.response?.data?.message || 'Unable to update approval';
+      // A 409 means the request is no longer pending: another reviewer decided
+      // it, or the contract left 'Pending Approval'. Unlike an amendment's 409,
+      // where the request stays open against the changed contract, this queue is
+      // stale, so it is re-read - the losing reviewer must not be left with a
+      // request that still reads Pending and offers Approve/Reject. The message
+      // is set after the reload so the successful re-read does not clear it.
+      if (err.response?.status === 409) {
+        await fetchApprovals();
+        setError(message);
+        return;
+      }
+      setError(message);
     } finally {
       setDeciding((current) => {
         const next = { ...current };
@@ -74,18 +93,18 @@ const ApprovalRequests = () => {
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
         {requests.length === 0 ? (
-          error ? (
-            <div className="px-6 py-10 text-center">
-              <p className="text-sm text-slate-500">
-                The approval list could not be loaded. Use Retry above to try again.
-              </p>
-            </div>
-          ) : (
+          requestsLoaded ? (
             <EmptyState
               icon={Inbox}
               title="No pending approvals"
               description="Contracts submitted for review appear here with approve and reject actions."
             />
+          ) : (
+            <div className="px-6 py-10 text-center">
+              <p className="text-sm text-slate-500">
+                The approval list could not be loaded. Use Retry above to try again.
+              </p>
+            </div>
           )
         ) : (
           /* Own scroll container: the table needs 40rem on a phone and this

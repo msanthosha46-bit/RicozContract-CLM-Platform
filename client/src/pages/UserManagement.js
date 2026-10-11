@@ -98,7 +98,7 @@ const UserManagement = () => {
                     <td className="px-4 py-3">
                       <select
                         aria-label={`Role for ${user.name}`}
-                        value={user.role}
+                        value={ROLES.includes(user.role) ? user.role : 'Employee'}
                         onChange={(event) => updateUser(user._id, 'role', event.target.value)}
                         className="rounded-lg border border-slate-200 bg-[#eaf1ff] px-2 py-1.5 text-xs font-semibold text-[#1d4ed8]"
                       >

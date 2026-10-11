@@ -28,6 +28,14 @@ const sortByCount = (rows) =>
 
 router.get('/summary', protect, authorize('Admin', 'Manager'), async (req, res, next) => {
   try {
+    // The overdue counts must come from the same repository as every other
+    // figure on the page: an obligation or milestone left overdue on a contract
+    // that was later archived kept inflating "Overdue Items" while the archived
+    // contract vanished from the total, the breakdowns and the Dashboard. The
+    // items hold no archive flag of their own, so the archived contracts are
+    // resolved once and the overdue queries exclude them.
+    const archivedContractIds = await Contract.find({ isArchived: true }).distinct('_id');
+
     const [total, draft, pending, active, expired, completed, overdueObligations, overdueMilestones, renewals, expiringSoon, statusBreakdown, typeBreakdown] = await Promise.all([
       Contract.countDocuments({ isArchived: false }),
       Contract.countDocuments({ status: 'Draft', isArchived: false }),
@@ -35,8 +43,8 @@ router.get('/summary', protect, authorize('Admin', 'Manager'), async (req, res, 
       Contract.countDocuments({ status: 'Active', isArchived: false }),
       Contract.countDocuments({ status: 'Expired', isArchived: false }),
       Contract.countDocuments({ status: 'Closed', isArchived: false }),
-      Obligation.countDocuments({ status: 'Overdue' }),
-      Milestone.countDocuments({ status: 'Overdue' }),
+      Obligation.countDocuments({ status: 'Overdue', contract: { $nin: archivedContractIds } }),
+      Milestone.countDocuments({ status: 'Overdue', contract: { $nin: archivedContractIds } }),
       Renewal.countDocuments(),
       // Same population the renewal screen lists: Active and Approved
       // contracts inside a 30-day UTC calendar window. Counting only Active

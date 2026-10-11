@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import API from '../services/api';
 import StatusBadge from '../components/Layout/Common/StatusBadge';
-import { ArrowLeft, Pencil, FileText, Upload, Download, BadgeCheck, LoaderCircle, FilePen } from 'lucide-react';
+import { ArrowLeft, Pencil, FileText, Upload, Download, BadgeCheck, LoaderCircle, FilePen, Archive } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import { canSubmitForApproval } from '../utils/contractTransitions';
 import { isEditableStatus } from '../utils/contractEditLock';
@@ -190,6 +190,7 @@ const ContractDetails = () => {
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to archive contract');
       setArchiving(false);
+      setArchiveOpen(false);
     }
   };
 
@@ -321,6 +322,18 @@ const ContractDetails = () => {
             >
               {submittingForApproval ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <BadgeCheck className="w-4 h-4" />}
               {submittingForApproval ? 'Submitting…' : 'Submit for Approval'}
+            </button>
+          )}
+          {/* Archiving is an Admin action on the server; the control is kept off
+              the page for everyone else and for what is already archived. */}
+          {isAdmin && !contract.isArchived && (
+            <button
+              type="button"
+              aria-label="Archive contract"
+              onClick={() => setArchiveOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              <Archive className="w-4 h-4" /> Archive
             </button>
           )}
         </div>
@@ -527,6 +540,41 @@ const ContractDetails = () => {
           await fetchAmendments();
         }}
       />
+
+      {/* Archiving freezes the record for every other write path on the server,
+          so it is confirmed before it is sent. */}
+      <Modal
+        isOpen={archiveOpen}
+        onClose={() => setArchiveOpen(false)}
+        title="Archive contract"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setArchiveOpen(false)}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleArchive}
+              disabled={archiving}
+              aria-busy={archiving}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d51d29] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#b81824] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {archiving && <LoaderCircle className="h-4 w-4 animate-spin" />}
+              {archiving ? 'Archiving…' : 'Archive contract'}
+            </button>
+          </>
+        }
+      >
+        <p>
+          This freezes the contract record: it will no longer appear in lists,
+          reports or notifications, and none of its details, documents,
+          obligations, milestones or approvals can be changed.
+        </p>
+      </Modal>
 
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
     </div>
