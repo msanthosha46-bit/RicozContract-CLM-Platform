@@ -1,0 +1,23 @@
+{
+  "name": "ricozcontract",
+  "version": "1.0.0",
+  "description": "RicozContract is a contract lifecycle management application with a React client and an Express/MongoDB API.",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/msanthosha46-bit/RicozContract-CLM-Platform.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/msanthosha46-bit/RicozContract-CLM-Platform/issues"
+  },
+  "homepage": "https://github.com/msanthosha46-bit/RicozContract-CLM-Platform#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^26.6.5",
+    "dotenv": "^18.0.7"
+  }
+}
