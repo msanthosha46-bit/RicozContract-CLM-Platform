@@ -1,14 +1,18 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import API from '../services/api';
 import StatusBadge from '../components/Layout/Common/StatusBadge';
 import {
   AlertTriangle,
+  BarChart3,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   FileText,
   Layers,
+  LayoutDashboard,
   Plus,
   RefreshCw,
+  User,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -50,6 +54,10 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const canViewReports = ['Admin', 'Manager'].includes(user?.role);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const workspaceRef = useRef(null);
+  const workspaceTriggerRef = useRef(null);
+  const workspaceMenuId = 'dashboard-workspace-menu';
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -74,6 +82,59 @@ const Dashboard = () => {
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  // The "Current workspace" control is a dropdown, so it follows the same
+  // interaction contract as the topbar account menu: the links reuse the
+  // Sidebar's route set (role-filtered), and the panel dismisses on an action,
+  // a press outside, or Escape (which returns focus to the trigger).
+  const workspaceLinks = useMemo(
+    () => [
+      { name: 'Overview', path: '/dashboard', icon: LayoutDashboard },
+      { name: 'Contracts', path: '/contracts', icon: FileText },
+      ...(canViewReports ? [{ name: 'Reports', path: '/reports', icon: BarChart3 }] : []),
+      { name: 'Profile', path: '/profile', icon: User }
+    ],
+    [canViewReports]
+  );
+
+  const closeWorkspace = useCallback(() => setWorkspaceOpen(false), []);
+
+  const handleWorkspaceKeyDown = (event) => {
+    const items = workspaceRef.current ? [...workspaceRef.current.querySelectorAll('[role="menuitem"]')] : [];
+    if (!items.length) return;
+    const current = items.indexOf(document.activeElement);
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      items[(current + 1 + items.length) % items.length].focus();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      items[(current - 1 + items.length) % items.length].focus();
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      items[0].focus();
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      items[items.length - 1].focus();
+    }
+  };
+
+  useEffect(() => {
+    if (!workspaceOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (workspaceRef.current && !workspaceRef.current.contains(event.target)) setWorkspaceOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape' && event.key !== 'Esc') return;
+      setWorkspaceOpen(false);
+      if (workspaceTriggerRef.current) workspaceTriggerRef.current.focus();
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [workspaceOpen]);
 
   if (loading) {
     return (
@@ -113,9 +174,8 @@ const Dashboard = () => {
     { label: 'Total contract value', value: totalValue, detail: `${metrics?.total || 0} contracts in your repository`, icon: Layers, accent: 'border-t-[#0f1d3a]', iconColor: 'text-[#0f1d3a]' },
     { label: 'Active value', value: activeValue, detail: `${metrics?.active || 0} active contracts`, icon: CheckCircle2, accent: 'border-t-[#16a36b]', iconColor: 'text-[#16a36b]' },
     // Captioned by the population the figure sums over: total minus Active,
-    // which is every draft, pending, expired, renewed and closed contract.
-    // It used to read "<n> awaiting approval", a different and much smaller
-    // set than the money above it.
+    // which includes every contract that is not currently Active.
+    // The previous wording described a smaller set than the monetary total above.
     { label: 'Non-active value', value: outstandingValue, detail: `${notActiveCount(metrics)} contracts outside Active status`, icon: FileText, accent: 'border-t-[#d51d29]', iconColor: 'text-[#d51d29]' },
     { label: 'Expiring soon', value: [String(metrics?.expiringSoon || 0)], detail: 'Active or approved, ending within 30 days', icon: AlertTriangle, accent: 'border-t-[#f59e0b]', iconColor: 'text-[#f59e0b]', isCount: true },
   ];
@@ -129,7 +189,43 @@ const Dashboard = () => {
           <p className="mt-2 text-lg text-slate-500">Track live agreements, approvals, and upcoming expiries.</p>
         </div>
         <div className="flex gap-3">
-          <span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm"><CalendarDays className="h-4 w-4" /> Current workspace</span>
+          <div ref={workspaceRef} className="relative">
+            <button
+              type="button"
+              ref={workspaceTriggerRef}
+              onClick={() => setWorkspaceOpen((value) => !value)}
+              aria-haspopup="menu"
+              aria-expanded={workspaceOpen}
+              aria-controls={workspaceMenuId}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-[#1a2436] dark:text-slate-200 dark:hover:bg-[#1e293b]"
+            >
+              <CalendarDays className="h-4 w-4" aria-hidden="true" /> Current workspace
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+
+            {workspaceOpen && (
+              <div
+                id={workspaceMenuId}
+                role="menu"
+                aria-label="Current workspace"
+                data-overlay="workspace-menu"
+                onKeyDown={handleWorkspaceKeyDown}
+                className="absolute left-0 z-40 mt-2 w-56 max-w-[calc(100vw_-_2rem)] origin-top-left rounded-xl border border-slate-200 bg-white p-1.5 text-left shadow-xl dark:border-slate-700 dark:bg-[#1a2436] md:left-auto md:right-0"
+              >
+                {workspaceLinks.map(({ name, path: to, icon: Icon }) => (
+                  <Link
+                    key={to}
+                    role="menuitem"
+                    to={to}
+                    onClick={closeWorkspace}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#243048]"
+                  >
+                    <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> {name}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
           {canViewReports && (
             <Link to="/reports" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm">Reports</Link>
           )}
