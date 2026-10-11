@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import API from '../services/api';
 import StatusBadge from '../components/Layout/Common/StatusBadge';
@@ -58,8 +58,15 @@ const ContractsList = () => {
     if (page !== 1) updateParams({ page: '1' });
   };
 
+  // Reset to the first page only when the search term actually changes. This
+  // effect also runs once on mount, and an unguarded reset bounced a shared or
+  // bookmarked ?page= link (and a refresh on page 3) back to page 1, which
+  // contradicts the shareable-pagination contract above.
+  const appliedSearch = useRef(search);
   useEffect(() => {
     const timer = setTimeout(() => {
+      if (appliedSearch.current === search) return;
+      appliedSearch.current = search;
       setDebouncedSearch(search);
       resetToFirstPage();
     }, 350);
@@ -72,13 +79,22 @@ const ContractsList = () => {
       setError('');
       const query = new URLSearchParams({ search: debouncedSearch, status, type, page, limit: PAGE_SIZE }).toString();
       const { data } = await API.get(`/contracts?${query}`);
+      const lastPage = data.totalPages || 1;
+      // A stale or bookmarked ?page= past the last page returns no rows even
+      // though matching contracts exist. Without realigning, the grid would
+      // report an empty repository and offer no way back. Loading stays on so
+      // the corrected page paints without flashing the empty state.
+      if (data.total > 0 && page > lastPage) {
+        updateParams({ page: String(lastPage) });
+        return;
+      }
       setContracts(data.contracts);
       setTotal(data.total);
-      setTotalPages(data.totalPages || 1);
+      setTotalPages(lastPage);
+      setLoading(false);
     } catch (err) {
       setContracts([]);
       setError(err.response?.data?.message || 'Unable to load contracts');
-    } finally {
       setLoading(false);
     }
   };
