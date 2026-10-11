@@ -373,3 +373,30 @@ test('forgot-password requests are rate limited', async () => {
   }
   assert.ok(sawRateLimit, 'expected a 429 after exceeding the forgot-password rate limit');
 });
+
+test('login normalizes mixed-case email like registration does', async () => {
+  const MIXED_EMAIL = 'Mixed.Case@Ricoz.Test';
+  const MIXED_PASSWORD = 'MixedPass123!';
+
+  const register = await api('POST', '/api/auth/register', {
+    body: { name: 'Mixed Case', email: MIXED_EMAIL, password: MIXED_PASSWORD }
+  });
+  assert.equal(register.status, 201);
+
+  const login = await api('POST', '/api/auth/login', {
+    body: { email: 'mixed.case@ricoz.test', password: MIXED_PASSWORD }
+  });
+  assert.equal(login.status, 200);
+  assert.ok(login.data.token);
+
+  const me = await api('GET', '/api/users/me', { token: login.data.token });
+  assert.equal(me.status, 200);
+  assert.equal(me.data.email, 'mixed.case@ricoz.test');
+
+  const wrongPassword = await api('POST', '/api/auth/login', {
+    body: { email: 'mixed.case@ricoz.test', password: 'wrong-password' }
+  });
+  assert.equal(wrongPassword.status, 401);
+
+  await User.deleteOne({ email: 'mixed.case@ricoz.test' });
+});
