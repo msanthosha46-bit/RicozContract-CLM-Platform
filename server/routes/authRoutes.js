@@ -160,7 +160,8 @@ router.post('/register', registerLimiter, async (req, res, next) => {
 router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : email;
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user || !user.password) {
       // Burn a comparable amount of CPU so a missing account and a wrong
       // password take about the same time to answer.
