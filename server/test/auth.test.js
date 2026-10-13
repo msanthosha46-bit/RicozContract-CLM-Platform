@@ -172,6 +172,22 @@ test('existing email/password registration, login and JWT access still work', as
   assert.equal(wrongPassword.status, 401);
 });
 
+test('re-registering an existing email is refused with the generic account message', async () => {
+  const before = await User.countDocuments();
+  const duplicate = await api('POST', '/api/auth/register', {
+    body: { name: 'Employee One', email: EMPLOYEE_EMAIL, password: EMPLOYEE_PASSWORD, department: 'Sales' }
+  });
+  assert.equal(duplicate.status, 400);
+  assert.equal(duplicate.data.message, 'Unable to create an account with those details.');
+  assert.equal(await User.countDocuments(), before, 'no second account may be created');
+
+  const mixedCase = await api('POST', '/api/auth/register', {
+    body: { name: 'Employee One', email: `  ${EMPLOYEE_EMAIL.toUpperCase()}  `, password: EMPLOYEE_PASSWORD }
+  });
+  assert.equal(mixedCase.status, 400);
+  assert.equal(mixedCase.data.message, 'Unable to create an account with those details.');
+});
+
 test('Google begin rejects missing and invalid credentials', async () => {
   const missing = await api('POST', '/api/auth/google/begin', { body: {} });
   assert.equal(missing.status, 400);

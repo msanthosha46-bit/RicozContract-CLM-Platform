@@ -36,7 +36,16 @@ const Register = () => {
 			await register(payload);
 			navigate('/dashboard', { replace: true });
 		} catch (requestError) {
-			setError(requestError.response?.data?.message || 'Unable to create your account.');
+			// Only the anti-enumeration message means the email already has an
+			// account: that is where the sign-in hint helps. Every other response
+			// (validation, rate limit, server error, network failure) is shown
+			// verbatim so the hint can never mislead.
+			const message = requestError.response?.data?.message;
+			if (message === 'Unable to create an account with those details.') {
+				setError(`${message} If you already have an account, sign in instead.`);
+			} else {
+				setError(message || 'Unable to create your account.');
+			}
 		} finally {
 			setLoading(false);
 		}

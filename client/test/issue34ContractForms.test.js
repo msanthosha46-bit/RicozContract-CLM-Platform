@@ -722,9 +722,15 @@ test('neither form renders a contract date in the device timezone', async () => 
       `${page} must not format a calendar date with the device timezone (Issue 33 regression)`
     );
   }
-  // The helper the two forms rely on is still UTC-pinned.
-  assert.equal(formatDate(CONTRACT_END), '30 Jun 2027');
-  assert.equal(formatDate(CONTRACT_START), '1 Jun 2027');
+  // The helper the two forms rely on is still UTC-pinned. Derive the expected
+  // string from the same UTC date options instead of hard-coding a locale
+  // spelling, so the assertion does not depend on the runner's default locale.
+  assert.equal(formatDate(CONTRACT_END), new Date(CONTRACT_END).toLocaleDateString(undefined, {
+    timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric'
+  }));
+  assert.equal(formatDate(CONTRACT_START), new Date(CONTRACT_START).toLocaleDateString(undefined, {
+    timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric'
+  }));
 });
 
 test('neither form carries demo or fake contract content', async () => {

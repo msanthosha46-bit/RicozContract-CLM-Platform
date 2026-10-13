@@ -40,6 +40,13 @@ jobs:
 
       - name: Test server
         working-directory: server
+        env:
+          # A fixed, test-only JWT secret. A clean checkout has no server/.env
+          # (it is gitignored), and several server suites sign JWTs with
+          # process.env.JWT_SECRET without an inline fallback, so without this
+          # they fail with 'secretOrPrivateKey must have a value'. It is scoped
+          # to this step only and is never a production value.
+          JWT_SECRET: test-only-jwt-secret-not-for-production
         run: npm test
 
       - name: Check server syntax
