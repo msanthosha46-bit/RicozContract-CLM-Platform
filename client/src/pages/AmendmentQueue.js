@@ -57,6 +57,11 @@ const AmendmentQueue = () => {
   const [filter, setFilter] = useState(ALL);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Whether the queue has actually been read. A failed load and a genuinely
+  // empty queue both leave `amendments` empty, and only one of them may be
+  // reported as "No amendment requests". A decision also reloads the queue, so
+  // this tracks the last read rather than the last message.
+  const [amendmentsLoaded, setAmendmentsLoaded] = useState(false);
   const [toast, setToast] = useState(null);
   // Keyed by amendment id so only the row being decided shows a spinner.
   const [deciding, setDeciding] = useState({});
@@ -69,8 +74,10 @@ const AmendmentQueue = () => {
       setLoading(true);
       const { data } = await API.get('/contract-amendments');
       setAmendments(sortForQueue(Array.isArray(data) ? data : []));
+      setAmendmentsLoaded(true);
       setError('');
     } catch (err) {
+      setAmendmentsLoaded(false);
       setError(err.response?.data?.message || 'Unable to load amendment requests');
     } finally {
       setLoading(false);
@@ -166,15 +173,23 @@ const AmendmentQueue = () => {
 
       <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-[#141c2e]">
         {visible.length === 0 ? (
-          <EmptyState
-            icon={amendments.length ? Inbox : FilePen}
-            title={amendments.length ? 'No amendments with that status' : 'No amendment requests'}
-            description={
-              amendments.length
-                ? 'Choose another status above, or All to see every request for every contract.'
-                : 'When someone needs to change the amount, currency, dates or assignee of a submitted contract, the request appears here for approval.'
-            }
-          />
+          amendmentsLoaded ? (
+            <EmptyState
+              icon={amendments.length ? Inbox : FilePen}
+              title={amendments.length ? 'No amendments with that status' : 'No amendment requests'}
+              description={
+                amendments.length
+                  ? 'Choose another status above, or All to see every request for every contract.'
+                  : 'When someone needs to change the amount, currency, dates or assignee of a submitted contract, the request appears here for approval.'
+              }
+            />
+          ) : (
+            <div className="px-6 py-10 text-center">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                The amendment list could not be loaded.
+              </p>
+            </div>
+          )
         ) : (
           /* Own scroll container, as on the approval page: the table needs more
              than a phone is wide and this parent clips overflow, so the Action
