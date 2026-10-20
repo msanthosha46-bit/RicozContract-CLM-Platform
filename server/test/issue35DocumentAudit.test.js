@@ -531,3 +531,73 @@ test('the bytes that come back are the bytes that went in', async () => {
   assert.equal(download.status, 200);
   assert.deepEqual(download.data, Buffer.from(content), 'the download is byte-identical to the upload');
 });
+
+/* ------------------------------------------------------------------ */
+/* additional auth lifecycle regression tests                          */
+/* ------------------------------------------------------------------ */
+
+test('a genuinely expired JWT is rejected with HTTP 401 on document download and listing', async () => {
+  const owner = await createUser({ role: 'Admin' });
+  const contract = await createContract({ createdBy: owner._id, assignedUser: owner._id });
+  const token = signToken(owner);
+  const stored = await upload(`/documents/upload/${contract._id}`, { token, filename: 'expired-check.pdf' });
+
+  const expiredToken = jwt.sign(
+    { id: owner._id.toString(), tokenVersion: owner.tokenVersion || 0 },
+    process.env.JWT_SECRET,
+    { expiresIn: '-1s' }
+  );
+
+  const download = await get(`/documents/download/${stored.data._id}`, expiredToken);
+  assert.equal(download.status, 401);
+  assert.match(download.data.message, /Not authorized|token failed/i);
+
+  const list = await get(`/documents/contract/${contract._id}`, expiredToken);
+  assert.equal(list.status, 401);
+  assert.match(list.data.message, /Not authorized|token failed/i);
+});
+
+test('invalid and revoked JWTs are rejected with HTTP 401 on document upload', async () => {
+  const owner = await createUser({ role: 'Admin' });
+  const contract = await createContract({ createdBy: owner._id, assignedUser: owner._id });
+  const token = signToken(owner);
+
+  const badToken = 'not.a.valid.token';
+  const badUpload = await upload(`/documents/upload/${contract._id}`, { token: badToken, filename: 'bad.pdf' });
+  assert.equal(badUpload.status, 401);
+  assert.match(badUpload.data.message, /Not authorized|token failed/i);
+
+  await User.updateOne({ _id: owner._id }, { $inc: { tokenVersion: 1 } });
+  const revokedUpload = await upload(`/documents/upload/${contract._id}`, { token, filename: 'revoked.pdf' });
+  assert.equal(revokedUpload.status, 401);
+  assert.match(revokedUpload.data.message, /Session expired|sign in again/i);
+});
+
+test('malformed Authorization headers are rejected with HTTP 401 on relevant document endpoints', async () => {
+  const owner = await createUser({ role: 'Admin' });
+  const contract = await createContract({ createdBy: owner._id, assignedUser: owner._id });
+  const token = signToken(owner);
+  const stored = await upload(`/documents/upload/${contract._id}`, { token, filename: 'malformed.pdf' });
+
+  const res1 = await fetch(`${baseURL}/documents/download/${stored.data._id}`, {
+    headers: { authorization: 'Token abc123' }
+  });
+  const data1 = await res1.json().catch(() => ({}));
+  assert.equal(res1.status, 401);
+  assert.match(data1.message, /Not authorized|no token/i);
+
+  const res2 = await fetch(`${baseURL}/documents/contract/${contract._id}`, {
+    headers: { authorization: 'Bearer' }
+  });
+  const data2 = await res2.json().catch(() => ({}));
+  assert.equal(res2.status, 401);
+  assert.match(data2.message, /Not authorized|no token/i);
+
+  const res3 = await fetch(`${baseURL}/documents/upload/${contract._id}`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer ' }
+  });
+  const data3 = await res3.json().catch(() => ({}));
+  assert.equal(res3.status, 401);
+  assert.match(data3.message, /Not authorized|no token|token/i);
+});
