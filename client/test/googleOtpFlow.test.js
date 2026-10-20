@@ -362,8 +362,11 @@ test('"Use a different account" hands control back to the page', async () => {
 // and renders immediately) and the `window.google` object it talks to. The
 // captured callback is then fired exactly as the real popup would fire it.
 let gsiCallback = null;
+let gsiButtonOptions = null;
 
 const installGoogleIdentity = () => {
+  gsiCallback = null;
+  gsiButtonOptions = null;
   if (!dom.window.document.querySelector('script[data-google-identity]')) {
     const script = dom.window.document.createElement('script');
     script.dataset.googleIdentity = 'true';
@@ -375,7 +378,9 @@ const installGoogleIdentity = () => {
         initialize: (options) => {
           gsiCallback = options.callback;
         },
-        renderButton: () => {}
+        renderButton: (node, options) => {
+          gsiButtonOptions = options;
+        }
       }
     }
   };
@@ -406,8 +411,10 @@ const mountAuthPage = async (Page) => {
 
 const fireCredential = async (credential) => {
   assert.ok(gsiCallback, 'the Google button must have registered its callback');
+  assert.ok(gsiButtonOptions, 'the Google button must have rendered with per-button state');
   await act(async () => {
-    await gsiCallback({ credential });
+    gsiButtonOptions.click_listener();
+    await gsiCallback({ credential, state: gsiButtonOptions.state });
   });
   await settle();
 };
@@ -466,6 +473,22 @@ test('Login: a rejected credential stays on the form with the server message', a
   assert.match(alertBox(container).textContent, /Google Sign-In could not be verified/);
   assert.equal(digitInputs(container).length, 0, 'no code screen without a verified identity');
   assert.equal(dom.window.localStorage.getItem('ricoz_user'), null);
+});
+
+test('Login: a missing GIS callback shows the reload recovery path without unlocking', async () => {
+  const container = await mountAuthPage(Login);
+  const googleButton = container.querySelector('[aria-busy]');
+  assert.ok(googleButton, 'the GIS control is mounted');
+
+  await act(async () => gsiButtonOptions.click_listener());
+  assert.equal(googleButton.getAttribute('aria-busy'), 'true', 'the pending state remains reserved while GIS is silent');
+  assert.equal(calls.length, 0, 'no authentication request starts without a credential');
+  assert.match(googleButton.textContent, /If it does not finish, reload this page/);
+  assert.equal(googleButton.querySelector('button')?.textContent, 'Reload page');
+
+  // The JSDOM mock directly invokes the documented credential callback to
+  // clean up this simulated attempt. It does not model popup cancellation.
+  await act(async () => gsiCallback({ credential: 'test-cleanup', state: gsiButtonOptions.state }));
 });
 
 test('Register: the same two-step flow, and backing out returns to the form', async () => {
