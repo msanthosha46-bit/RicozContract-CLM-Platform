@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useContext, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -6,26 +6,59 @@ import { ADMIN_ROLES, MANAGER_ROLES } from './utils/roles';
 import Sidebar from './components/Layout/Sidebar';
 import Topbar from './components/Layout/Topbar';
 
-import Login from './pages/Login';
-import Register from './pages/Register';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import LandingPage from './pages/LandingPage';
-import Dashboard from './pages/Dashboard';
-import ContractsList from './pages/ContractsList';
-import CreateContract from './pages/CreateContract';
-import ContractDetails from './pages/ContractDetails';
-import EditContract from './pages/EditContract';
-import ApprovalRequests from './pages/ApprovalRequests';
-import AmendmentQueue from './pages/AmendmentQueue';
-import Obligations from './pages/Obligations';
-import Milestones from './pages/Milestones';
-import RenewalManagement from './pages/RenewalManagement';
-import Reports from './pages/Reports';
-import ActivityLog from './pages/ActivityLog';
-import UserManagement from './pages/UserManagement';
-import Settings from './pages/Settings';
-import Profile from './pages/Profile';
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const ContractsList = lazy(() => import('./pages/ContractsList'));
+const CreateContract = lazy(() => import('./pages/CreateContract'));
+const ContractDetails = lazy(() => import('./pages/ContractDetails'));
+const EditContract = lazy(() => import('./pages/EditContract'));
+const ApprovalRequests = lazy(() => import('./pages/ApprovalRequests'));
+const AmendmentQueue = lazy(() => import('./pages/AmendmentQueue'));
+const Obligations = lazy(() => import('./pages/Obligations'));
+const Milestones = lazy(() => import('./pages/Milestones'));
+const RenewalManagement = lazy(() => import('./pages/RenewalManagement'));
+const Reports = lazy(() => import('./pages/Reports'));
+const ActivityLog = lazy(() => import('./pages/ActivityLog'));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Profile = lazy(() => import('./pages/Profile'));
+
+const PageLoadingFallback = () => (
+  <main className="flex min-h-screen items-center justify-center bg-[#f3f5f8] p-6 text-slate-700 dark:bg-[#0b1220] dark:text-slate-200">
+    <p role="status" aria-live="polite">Loading page...</p>
+  </main>
+);
+
+class RouteErrorBoundary extends React.Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#f3f5f8] p-6 text-center text-slate-700 dark:bg-[#0b1220] dark:text-slate-200">
+          <p role="alert">This page could not be loaded. Please reload and try again.</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-xl bg-[#d51d29] px-4 py-2 font-semibold text-white"
+          >
+            Reload page
+          </button>
+        </main>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const ProtectedLayout = ({ children }) => {
   const { user } = useContext(AuthContext);
@@ -69,6 +102,8 @@ function App() {
     <ThemeProvider>
       <AuthProvider>
         <BrowserRouter>
+        <RouteErrorBoundary>
+        <Suspense fallback={<PageLoadingFallback />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
@@ -155,6 +190,8 @@ function App() {
           <Route path="/profile" element={<ProtectedLayout><Profile /></ProtectedLayout>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
+        </RouteErrorBoundary>
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>
