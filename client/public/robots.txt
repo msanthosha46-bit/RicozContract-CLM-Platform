@@ -1,0 +1,13 @@
+User-agent: *
+Disallow: /dashboard
+Disallow: /contracts
+Disallow: /approvals
+Disallow: /amendments
+Disallow: /obligations
+Disallow: /milestones
+Disallow: /renewals
+Disallow: /reports
+Disallow: /activity
+Disallow: /users
+Disallow: /settings
+Disallow: /profile

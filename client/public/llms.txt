@@ -1,0 +1,9 @@
+# RicozContract
+
+## Public pages
+
+- [Home](/)
+- [Login](/login)
+- [Register](/register)
+- [Forgot password](/forgot-password)
+- [Reset password](/reset-password)
