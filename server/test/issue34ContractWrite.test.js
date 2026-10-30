@@ -32,11 +32,11 @@
 // development data is read or written.
 
 const assert = require('node:assert/strict');
-const path = require('node:path');
 const jwt = require('jsonwebtoken');
 const test = require('node:test');
-
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const { readFocusedTestConfig } = require('./helpers/testDatabase');
+const { mongoUri: TEST_DB_URI, jwtSecret: TEST_JWT_SECRET } = readFocusedTestConfig(process.env, { suiteName: 'issue34-contract-write' });
+process.env.JWT_SECRET = TEST_JWT_SECRET;
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -46,9 +46,6 @@ const Contract = require('../models/Contract');
 const ActivityLog = require('../models/ActivityLog');
 
 const contractRoutes = require('../routes/contractRoutes');
-const { disposableTestDatabaseUri } = require('./helpers/testDatabase');
-
-const TEST_DB_URI = disposableTestDatabaseUri('ricozcontract_issue34_write_test');
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // The vocabulary the create and edit forms actually offer, and the only one the
@@ -71,7 +68,7 @@ const calendarDay = (daysFromToday) => utcDay(daysFromToday).toISOString().slice
 
 const signToken = (user) => jwt.sign(
   { id: user._id.toString(), tokenVersion: user.tokenVersion || 0 },
-  process.env.JWT_SECRET,
+  TEST_JWT_SECRET,
   { expiresIn: '7d' }
 );
 
@@ -134,8 +131,7 @@ const validBody = (overrides = {}) => ({
 });
 
 test.before(async () => {
-  await mongoose.connect(TEST_DB_URI, { autoIndex: false });
-  await mongoose.connection.dropDatabase();
+  await mongoose.connect(TEST_DB_URI, { autoIndex: false, serverSelectionTimeoutMS: 3000 });
   const app = express();
   app.use(express.json({ limit: '1mb' }));
   app.use('/api/contracts', contractRoutes);
@@ -156,7 +152,6 @@ test.before(async () => {
 
 test.after(async () => {
   if (server) await new Promise((resolve) => server.close(resolve));
-  await mongoose.connection.dropDatabase();
   await mongoose.disconnect();
 });
 
@@ -417,6 +412,7 @@ test('editing a contract needs a session and contract access', async () => {
 test('the assigned user may edit, and losing the assignment revokes it', async () => {
   const owner = await createUser();
   const assignee = await createUser({ name: 'Assigned Employee' });
+  const admin = await createUser({ role: 'Admin' });
   const contract = await makeContract({ createdBy: owner._id, assignedUser: assignee._id });
 
   const whileAssigned = await api('PUT', `/api/contracts/${contract._id}`, {
@@ -424,7 +420,10 @@ test('the assigned user may edit, and losing the assignment revokes it', async (
   });
   assert.equal(whileAssigned.status, 200);
 
-  await api('PUT', `/api/contracts/${contract._id}`, { body: { assignedUser: null }, token: signToken(owner) });
+  // Only an administrator or a manager may move the assignee, so the assignment
+  // is taken away by one.
+  const cleared = await api('PUT', `/api/contracts/${contract._id}`, { body: { assignedUser: null }, token: signToken(admin) });
+  assert.equal(cleared.status, 200);
   const afterRemoval = await api('PUT', `/api/contracts/${contract._id}`, {
     body: { description: 'Still trying' }, token: signToken(assignee)
   });

@@ -17,10 +17,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const jwt = require('jsonwebtoken');
 const test = require('node:test');
+const { readFocusedTestConfig } = require('./helpers/testDatabase');
+const { mongoUri: TEST_DB_URI, jwtSecret: TEST_JWT_SECRET } = readFocusedTestConfig(process.env, { suiteName: 'phase11' });
+process.env.JWT_SECRET = TEST_JWT_SECRET;
 
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-if (!process.env.JWT_SECRET) process.env.JWT_SECRET = 'test-only-jwt-secret-not-for-production';
 if (!process.env.GOOGLE_CLIENT_ID) process.env.GOOGLE_CLIENT_ID = 'test-only-client-id.apps.googleusercontent.com';
 
 const express = require('express');
@@ -50,7 +51,6 @@ const {
 const { setStorageAdapter, resetStorageAdapter } = require('../services/storage');
 const { createMockStorage } = require('./helpers/mockStorage');
 
-const TEST_DB_URI = 'mongodb://127.0.0.1:27017/ricozcontract_phase11_test';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 let server;
@@ -146,8 +146,7 @@ const startTestApp = () =>
 test.before(async () => {
   mockStorage = createMockStorage();
   setStorageAdapter(mockStorage.adapter);
-  await mongoose.connect(TEST_DB_URI);
-  await mongoose.connection.dropDatabase();
+  await mongoose.connect(TEST_DB_URI, { autoIndex: false, serverSelectionTimeoutMS: 3000 });
   await startTestApp();
   baseURL = `http://127.0.0.1:${server.address().port}`;
 });
@@ -157,7 +156,6 @@ test.after(async () => {
   resetStorageAdapter();
   mockStorage.cleanup();
   if (mongoose.connection.readyState) {
-    await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
   }
 });
@@ -375,16 +373,19 @@ test('update keeps the existing amount and dates when they are not supplied', as
 
 test('an unassignable update still reports the missing user instead of writing a dangling ref', async () => {
   const user = await createUser({ name: 'Unassign' });
+  const admin = await createUser({ name: 'Unassign Admin', role: 'Admin' });
   const contract = await createContract({ createdBy: user._id, assignedUser: user._id });
 
+  // Only an administrator or a manager may move the assignee, so the assignment
+  // is cleared by one.
   const cleared = await api('PUT', `/api/contracts/${contract._id}`, {
-    token: signToken(user), body: { assignedUser: null }
+    token: signToken(admin), body: { assignedUser: null }
   });
   assert.equal(cleared.status, 200, 'clearing the assignee is allowed');
   assert.equal(cleared.data.assignedUser, null);
 
   const ghost = await api('PUT', `/api/contracts/${contract._id}`, {
-    token: signToken(user), body: { assignedUser: new mongoose.Types.ObjectId().toString() }
+    token: signToken(admin), body: { assignedUser: new mongoose.Types.ObjectId().toString() }
   });
   assert.equal(ghost.status, 404);
   const stored = await Contract.findById(contract._id);
@@ -605,19 +606,9 @@ test('the schema declares the indexes the audited queries depend on', () => {
 });
 
 test('the schema index report is read-only and detects drift', async () => {
-  // Drift is detected against a collection whose index was never built. The
-  // test connection has autoIndex left at its default, so the shared test
-  // collections do get their declared indexes built; a dedicated connection with
-  // autoIndex disabled reproduces the production condition exactly.
-  //
-  // autoCreate is disabled alongside it. It is a separate setting, and it
-  // defaults to true, so it kept queueing a collection creation for every model
-  // compiled on this connection. That creation lands on a later tick than the
-  // `before` read below but earlier than the `after` read, which made
-  // "the report created nothing" fail intermittently with
-  // after=[{_id_}] and before=[] - the report was innocent, the connection was
-  // creating the collection underneath it. It also made the sibling test
-  // asserting an absent collection racy for the same reason.
+  // Both index and collection creation are disabled on this dedicated
+  // connection so the read-only report can observe a collection that starts
+  // without indexes or a namespace.
   const connection = mongoose.createConnection();
   await connection.openUri(TEST_DB_URI, { autoIndex: false, autoCreate: false });
   const drifted = connection.model(

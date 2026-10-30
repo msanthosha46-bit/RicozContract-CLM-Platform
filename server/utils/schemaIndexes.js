@@ -16,6 +16,7 @@
 // updateMany or insertMany, and it accepts no model that it was not handed, so
 // running it against production can only ever read.
 const mongoose = require('mongoose');
+const { isDeepStrictEqual } = require('node:util');
 
 const NAMESPACE_NOT_FOUND = 26;
 const REPORT_LIMIT = 200;
@@ -33,7 +34,9 @@ const isIdKey = (key) => Object.keys(key).length === 1 && key._id !== undefined;
 //   - it is named "_id_", not the generated "_id_1";
 //   - it is always unique, but listIndexes omits the `unique` flag for it;
 //   - it always exists, even before a document is written.
-const idIndexContract = () => ({ name: '_id_', key: { _id: 1 }, unique: true, sparse: false });
+const idIndexContract = () => ({
+  name: '_id_', key: { _id: 1 }, unique: true, sparse: false, partialFilterExpression: null
+});
 
 // The options that change what an index guarantees, and therefore what has to
 // match. Everything else (background, v, collation of the default collection)
@@ -44,7 +47,8 @@ const indexContract = (key, options = {}) => {
     name: options.name || generatedIndexName(key),
     key,
     unique: Boolean(options.unique),
-    sparse: Boolean(options.sparse)
+    sparse: Boolean(options.sparse),
+    partialFilterExpression: options.partialFilterExpression || null
   };
 };
 
@@ -52,9 +56,15 @@ const sameContract = (declared, actual) => (
   declared.name === actual.name
   && declared.unique === actual.unique
   && declared.sparse === actual.sparse
+  && JSON.stringify(declared.partialFilterExpression) === JSON.stringify(actual.partialFilterExpression)
   && JSON.stringify(declared.key) === JSON.stringify(actual.key)
-);const describeIndex = (index) => {
-  const flags = [index.unique ? 'unique' : null, index.sparse ? 'sparse' : null]
+);
+const describeIndex = (index) => {
+  const flags = [
+    index.unique ? 'unique' : null,
+    index.sparse ? 'sparse' : null,
+    index.partialFilterExpression ? 'partial' : null
+  ]
     .filter(Boolean)
     .join(',');
   return flags ? `${index.name} (${flags})` : index.name;
@@ -111,6 +121,55 @@ const readSchemaIndexReport = async (model, { limit = REPORT_LIMIT } = {}) => {
   };
 };
 
+const RENEWAL_OPERATION_INDEXES = [
+  {
+    modelName: 'Contract',
+    name: 'operationMarker.operationId_1',
+    key: { 'operationMarker.operationId': 1 },
+    partialFilterExpression: { 'operationMarker.operationId': { $type: 'string' } }
+  },
+  {
+    modelName: 'Renewal',
+    name: 'operationId_1',
+    key: { operationId: 1 },
+    partialFilterExpression: { operationId: { $type: 'string' } }
+  },
+  {
+    modelName: 'ActivityLog',
+    name: 'operationId_1',
+    key: { operationId: 1 },
+    partialFilterExpression: { operationId: { $type: 'string' } }
+  }
+];
+
+/** Read and verify only the three indexes required by renewal recovery. */
+const readRenewalOperationIndexReadiness = async ({
+  Contract,
+  Renewal,
+  ActivityLog
+}) => {
+  const models = { Contract, Renewal, ActivityLog };
+  const checks = await Promise.all(RENEWAL_OPERATION_INDEXES.map(async (required) => {
+    const model = models[required.modelName];
+    if (!model) throw new TypeError(`Missing model for ${required.modelName} renewal index check`);
+    const actualIndexes = await readActualIndexes(model);
+    const actual = actualIndexes.find((index) => index.name === required.name);
+    const matches = Boolean(actual
+      && isDeepStrictEqual(actual.key, required.key)
+      && actual.unique === true
+      && actual.sparse === false
+      && isDeepStrictEqual(actual.partialFilterExpression, required.partialFilterExpression));
+    return {
+      collection: model.collection.collectionName,
+      name: required.name,
+      ready: matches,
+      actual: actual || null
+    };
+  }));
+
+  return { ready: checks.every((check) => check.ready), checks };
+};
+
 /** Human-readable report. Contains no connection string and no credentials. */
 const describeSchemaIndexReport = (report) => {
   const lines = [];
@@ -132,8 +191,10 @@ const describeSchemaIndexReport = (report) => {
 
   for (const pair of report.mismatched) {
     lines.push(`    the live ${pair.actual.name} has key ${JSON.stringify(pair.actual.key)}` +
-      ` unique=${pair.actual.unique} sparse=${pair.actual.sparse}, the schema declares` +
-      ` ${JSON.stringify(pair.declared.key)} unique=${pair.declared.unique} sparse=${pair.declared.sparse}`);
+      ` unique=${pair.actual.unique} sparse=${pair.actual.sparse}` +
+      ` partial=${JSON.stringify(pair.actual.partialFilterExpression)}, the schema declares` +
+      ` ${JSON.stringify(pair.declared.key)} unique=${pair.declared.unique} sparse=${pair.declared.sparse}` +
+      ` partial=${JSON.stringify(pair.declared.partialFilterExpression)}`);
   }
 
   if (report.ready) {
@@ -152,5 +213,6 @@ module.exports = {
   declaredIndexesFor,
   readActualIndexes,
   readSchemaIndexReport,
+  readRenewalOperationIndexReadiness,
   describeSchemaIndexReport
 };

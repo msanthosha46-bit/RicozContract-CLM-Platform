@@ -1,9 +1,9 @@
 const assert = require('node:assert/strict');
-const path = require('node:path');
 const jwt = require('jsonwebtoken');
 const test = require('node:test');
-
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const { readFocusedTestConfig } = require('./helpers/testDatabase');
+const { mongoUri: TEST_DB_URI, jwtSecret: TEST_JWT_SECRET } = readFocusedTestConfig(process.env, { suiteName: 'issue16-approval' });
+process.env.JWT_SECRET = TEST_JWT_SECRET;
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -13,13 +13,6 @@ const Contract = require('../models/Contract');
 const ActivityLog = require('../models/ActivityLog');
 const Approval = require('../models/Approval');
 const approvalRoutes = require('../routes/approvalRoutes');
-const { disposableTestDatabaseUri } = require('./helpers/testDatabase');
-
-// A test database of its own, and never the application's connection string.
-// The name is recognisably disposable and the host is loopback, which is what
-// helpers/testDatabase.js enforces. testDatabaseSafety.test.js fails if this
-// suite stops using the shared helper.
-const TEST_DB_URI = disposableTestDatabaseUri('ricozcontract_approval_decision_test');
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // Issue 16 - the approval decision endpoint must decide a request exactly once,
@@ -39,7 +32,7 @@ const utcDay = (daysFromToday) => new Date(Date.UTC(
 
 const signToken = (user) => jwt.sign(
   { id: user._id.toString(), tokenVersion: user.tokenVersion || 0 },
-  process.env.JWT_SECRET,
+  TEST_JWT_SECRET,
   { expiresIn: '7d' }
 );
 
@@ -81,8 +74,7 @@ const api = async (method, url, { body, token } = {}) => {
 };
 
 test.before(async () => {
-  await mongoose.connect(TEST_DB_URI, { autoIndex: false });
-  await mongoose.connection.dropDatabase();
+  await mongoose.connect(TEST_DB_URI, { autoIndex: false, serverSelectionTimeoutMS: 3000 });
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));
@@ -108,7 +100,6 @@ test.beforeEach(async () => {
 test.after(async () => {
   if (server) await new Promise((resolve) => server.close(resolve));
   if (mongoose.connection.readyState) {
-    await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
   }
 });

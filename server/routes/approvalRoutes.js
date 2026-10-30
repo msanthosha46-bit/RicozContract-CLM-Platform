@@ -6,6 +6,22 @@ const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
 const { canAccessContract } = require('../utils/access');
 const { canSubmitForApproval } = require('../utils/contractTransitions');
+const { compareAndSetContract } = require('../utils/contractRevision');
+
+const reportCompensationFailure = (res, { recordType, recordId, contractId, action }, error) => {
+  console.error(`${recordType} decision compensation failed`, {
+    recordId: String(recordId),
+    contractId: String(contractId),
+    action,
+    errorName: error?.name || 'ConditionalRestoreMiss',
+    errorCode: error?.code
+  });
+  res.status(500).json({
+    code: 'DECISION_COMPENSATION_FAILED',
+    message: 'The contract update did not complete and the related decision could not be restored. Operator reconciliation is required.',
+    decisionRestored: false
+  });
+};
 
 router.post('/submit/:contractId', protect, async (req, res, next) => {
   try {
@@ -26,14 +42,53 @@ router.post('/submit/:contractId', protect, async (req, res, next) => {
       return res.status(409).json({ message: 'This contract is already pending approval' });
     }
 
-    contract.status = 'Pending Approval';
-    await contract.save();
-
-    const approval = await Approval.create({
-      contract: contract._id,
-      requestedBy: req.user._id,
-      status: 'Pending'
+    const submitted = await compareAndSetContract({
+      contractId: contract._id,
+      expectedRevision: contract.revision === undefined ? 0 : contract.revision,
+      expectedStatus: contract.status,
+      requireUnarchived: true,
+      set: { status: 'Pending Approval' }
     });
+    if (!submitted) {
+      return res.status(409).json({ message: 'Contract was updated by another request. Refresh and try again.' });
+    }
+
+    let approval;
+    try {
+      approval = await Approval.create({
+        contract: contract._id,
+        requestedBy: req.user._id,
+        status: 'Pending'
+      });
+    } catch (error) {
+      try {
+        const restored = await compareAndSetContract({
+          contractId: contract._id,
+          expectedRevision: submitted.revision,
+          expectedStatus: 'Pending Approval',
+          requireUnarchived: true,
+          set: { status: contract.status }
+        });
+        if (!restored) {
+          reportCompensationFailure(res, {
+            recordType: 'Approval submission',
+            recordId: contract._id,
+            contractId: contract._id,
+            action: 'create'
+          });
+          return;
+        }
+      } catch (restoreError) {
+        reportCompensationFailure(res, {
+          recordType: 'Approval submission',
+          recordId: contract._id,
+          contractId: contract._id,
+          action: 'create'
+        }, restoreError);
+        return;
+      }
+      throw error;
+    }
 
     await logActivity(req.user._id, 'Submitted for Approval', contract._id, `Contract ${contract.contractNumber} submitted for approval`);
     res.status(201).json(approval);
@@ -113,10 +168,55 @@ router.put('/:id/action', protect, authorize('Admin', 'Manager'), async (req, re
       return res.status(409).json({ message: 'This approval request has already been decided' });
     }
 
-    // The contract is written only after the request has been claimed, so a
-    // losing concurrent caller never touches it.
-    contract.status = action === 'Approved' ? 'Active' : 'Rejected';
-    await contract.save();
+    // The approval is claimed first so only one caller decides it. If the
+    // contract revision changed since it was read, restore the claim to Pending
+    // and let the approver refresh rather than applying a stale decision.
+    let updatedContract;
+    const restoreApprovalClaim = async () => {
+      try {
+        const result = await Approval.updateOne(
+          { _id: decided._id, status: action, approver: req.user._id },
+          { $set: { status: 'Pending' }, $unset: { approver: 1, comments: 1, decisionDate: 1 } }
+        );
+        if (result?.matchedCount !== 1) {
+          reportCompensationFailure(res, {
+            recordType: 'Approval',
+            recordId: decided._id,
+            contractId: contract._id,
+            action
+          });
+          return false;
+        }
+        return true;
+      } catch (restoreError) {
+        reportCompensationFailure(res, {
+          recordType: 'Approval',
+          recordId: decided._id,
+          contractId: contract._id,
+          action
+        }, restoreError);
+        return false;
+      }
+    };
+
+    try {
+      updatedContract = await compareAndSetContract({
+        contractId: contract._id,
+        expectedRevision: contract.revision === undefined ? 0 : contract.revision,
+        expectedStatus: 'Pending Approval',
+        requireUnarchived: true,
+        set: { status: action === 'Approved' ? 'Active' : 'Rejected' }
+      });
+    } catch (error) {
+      if (!await restoreApprovalClaim()) return;
+      throw error;
+    }
+    if (!updatedContract) {
+      if (!await restoreApprovalClaim()) return;
+      return res.status(409).json({
+        message: 'Contract was updated by another request. The approval remains pending; refresh and try again.'
+      });
+    }
 
     await logActivity(req.user._id, `Contract ${action}`, approval.contract, `Approval decision: ${action}. Comments: ${comments || 'None'}`);
     res.json(decided);

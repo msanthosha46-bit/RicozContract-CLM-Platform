@@ -9,12 +9,28 @@ const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
 const { canAccessContract, employeeContractScope, isPrivileged } = require('../utils/access');
 const { LOCKED_FIELDS, isEditableStatus, sameValue } = require('../utils/contractEditLock');
+const { compareAndSetContract } = require('../utils/contractRevision');
 const {
   validateContractDates,
   validateContractAmount,
   validateContractCurrency,
   parseContractDate
 } = require('../utils/contractValidation');
+
+const reportAmendmentCompensationFailure = (res, { amendmentId, contractId, action }, error) => {
+  console.error('Amendment decision compensation failed', {
+    amendmentId: String(amendmentId),
+    contractId: String(contractId),
+    action,
+    errorName: error?.name || 'ConditionalRestoreMiss',
+    errorCode: error?.code
+  });
+  res.status(500).json({
+    code: 'DECISION_COMPENSATION_FAILED',
+    message: 'The contract update did not complete and the related decision could not be restored. Operator reconciliation is required.',
+    decisionRestored: false
+  });
+};
 
 // The forward path for the changes `PUT /contracts/:id` now refuses with 409.
 //
@@ -381,19 +397,98 @@ router.put('/:id/action', protect, authorize('Admin', 'Manager'), async (req, re
       return res.status(409).json({ message: 'This amendment has already been decided' });
     }
 
-    // The contract is written only after the request has been claimed, so a
-    // losing concurrent caller never touches it.
+    // Captured before the update is applied below, so the log can name the
+    // assignee the contract is leaving as well as the one it is going to.
+    const assignedRef = contract.assignedUser;
+    const previousAssignee = assignedRef
+      ? String(assignedRef._id ? assignedRef._id : assignedRef)
+      : null;
+
+    // The amendment is claimed first so only one caller decides it. If another
+    // contract write won after the stale-value check, restore the claim to
+    // Pending so the approver can review the latest values and decide again.
+    let updatedContract = contract;
     if (action === 'Approved') {
-      Object.assign(contract, amendment.proposed);
-      await contract.save();
+      const restoreAmendmentClaim = async () => {
+        try {
+          const result = await ContractAmendment.updateOne(
+            { _id: decided._id, status: 'Approved', decidedBy: req.user._id },
+            { $set: { status: 'Pending', decidedBy: null, decisionComments: null, decidedAt: null } }
+          );
+          if (result?.matchedCount !== 1) {
+            reportAmendmentCompensationFailure(res, {
+              amendmentId: decided._id,
+              contractId: contract._id,
+              action
+            });
+            return false;
+          }
+          return true;
+        } catch (restoreError) {
+          reportAmendmentCompensationFailure(res, {
+            amendmentId: decided._id,
+            contractId: contract._id,
+            action
+          }, restoreError);
+          return false;
+        }
+      };
+
+      try {
+        updatedContract = await compareAndSetContract({
+          contractId: contract._id,
+          expectedRevision: contract.revision === undefined ? 0 : contract.revision,
+          expectedStatus: contract.status,
+          requireUnarchived: true,
+          set: amendment.proposed
+        });
+      } catch (error) {
+        if (!await restoreAmendmentClaim()) return;
+        throw error;
+      }
+      if (!updatedContract) {
+        if (!await restoreAmendmentClaim()) return;
+        return res.status(409).json({
+          message: 'Contract was updated by another request. The amendment remains pending; refresh and try again.'
+        });
+      }
+    }
+
+    // An approved amendment that moves the assignee IS a reassignment, so it
+    // is recorded and announced exactly like a direct edit: the same explicit
+    // activity entry, naming the old and the new assignee, and the same
+    // notification for the new assignee. Without this, the same handover would
+    // be announced on one route and silent on the other.
+    //
+    // `previousAssignee` is captured before the update is applied above, and a
+    // cleared assignment carries no recipient, so it notifies nobody.
+    if (action === 'Approved' && amendment.proposed.assignedUser !== undefined) {
+      const newAssignee = amendment.proposed.assignedUser
+        ? String(amendment.proposed.assignedUser)
+        : null;
+      if (!sameValue('assignedUser', newAssignee, previousAssignee)) {
+        const names = await assigneeNames([previousAssignee, newAssignee]);
+        const from = previousAssignee ? (names.get(previousAssignee) || 'another user') : 'Unassigned';
+        const to = newAssignee ? (names.get(newAssignee) || 'another user') : 'Unassigned';
+        await logActivity(
+          req.user._id,
+          'Contract Reassigned',
+          updatedContract._id,
+          `Assignee changed from ${from} to ${to} on ${updatedContract.contractNumber}`,
+          {
+            ...(previousAssignee ? { previousUser: previousAssignee } : {}),
+            ...(newAssignee ? { targetUser: newAssignee } : {})
+          }
+        );
+      }
     }
 
     const summary = action === 'Approved'
       ? `Amendment approved and applied: ${changed.join(', ')}`
       : `Amendment rejected${decided.decisionComments ? `: ${decided.decisionComments}` : ''}`;
 
-    await logActivity(req.user._id, `Amendment ${action}`, contract._id,
-      `${summary} for ${contract.contractNumber}`);
+    await logActivity(req.user._id, `Amendment ${action}`, updatedContract._id,
+      `${summary} for ${updatedContract.contractNumber}`);
     res.json(await withAssigneeNames(decided));
   } catch (error) {
     next(error);
@@ -433,6 +528,18 @@ const assigneeIdsIn = (amendment) => [amendment.before?.assignedUser, amendment.
   .map((value) => (value && typeof value === 'object' && value._id ? value._id : value))
   .filter((value) => value && mongoose.isValidObjectId(String(value)))
   .map(String);
+
+// Resolves a set of user ids to their display names, for the activity log.
+// Names only, for the same reason as the helpers above: the log records who
+// held a contract, not a directory of the users in it.
+const assigneeNames = async (ids) => {
+  const wanted = [...new Set(ids.filter(Boolean))];
+  const names = new Map();
+  if (!wanted.length) return names;
+  const users = await User.find({ _id: { $in: wanted } }).select('_id name');
+  users.forEach((user) => names.set(user._id.toString(), user.name));
+  return names;
+};
 
 // Resolves the names for one amendment. Used by the single-document responses.
 //

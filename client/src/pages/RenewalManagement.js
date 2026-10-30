@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import API from '../services/api';
 import { CalendarClock, History } from 'lucide-react';
 import Modal from '../components/Layout/Common/Modal';
@@ -18,6 +18,13 @@ const reminderStyles = {
   90: 'rz-urgency-90'
 };
 
+const createOperationId = () => {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
 const RenewalManagement = () => {
   const [expiringContracts, setExpiringContracts] = useState([]);
   const [renewableContracts, setRenewableContracts] = useState([]);
@@ -30,6 +37,7 @@ const RenewalManagement = () => {
   const [newEndDate, setNewEndDate] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const operationIds = useRef(new Map());
 
   const fetchRenewals = async () => {
     try {
@@ -66,12 +74,24 @@ const RenewalManagement = () => {
     setSaving(true);
     setError('');
     try {
-      await API.post(`/renewals/renew/${selected._id}`, { newEndDate, notes: notes.trim() || 'Renewed from workspace' });
+      const normalizedNotes = notes.trim() || 'Renewed from workspace';
+      const operationKey = JSON.stringify([selected._id, newEndDate, normalizedNotes]);
+      const sessionOperationKey = `renewal-operation:${selected._id}`;
+      const operationId = operationIds.current.get(operationKey)
+        || window.sessionStorage.getItem(sessionOperationKey)
+        || createOperationId();
+      operationIds.current.set(operationKey, operationId);
+      window.sessionStorage.setItem(sessionOperationKey, operationId);
+      await API.post(`/renewals/renew/${selected._id}`, { newEndDate, notes: normalizedNotes, operationId });
+      operationIds.current.delete(operationKey);
+      window.sessionStorage.removeItem(sessionOperationKey);
       setSelected(null);
       setToast({ type: 'success', message: 'Contract renewed and kept active' });
       await fetchRenewals();
     } catch (err) {
-      setError(err.response?.data?.message || 'Renewal failed');
+      const message = err.response?.data?.message || 'Renewal failed';
+      const failedOperationId = err.response?.data?.operationId;
+      setError(failedOperationId ? `${message} Operation ID: ${failedOperationId}` : message);
     } finally {
       setSaving(false);
     }

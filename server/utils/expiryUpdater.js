@@ -1,5 +1,6 @@
 const Contract = require('../models/Contract');
 const logActivity = require('./activityLogger');
+const { compareAndSetContract } = require('./contractRevision');
 
 const startOfUtcDay = (value) => {
   const d = new Date(value);
@@ -16,19 +17,20 @@ const runExpiryPass = async () => {
     status: 'Active',
     isArchived: false,
     endDate: { $lt: cutoff }
-  }).select('_id contractNumber createdBy assignedUser');
+  }).select('_id contractNumber createdBy assignedUser revision');
 
   let expired = 0;
   for (const contract of eligible) {
-    // The status guard is repeated in the write filter, so the flip is a
-    // compare-and-set: a contract that stopped being Active (renewed, closed or
-    // archived) between the scan and the write is left alone. This is what makes
-    // the job idempotent - a second execution matches nothing and reports 0.
-    const flipped = await Contract.findOneAndUpdate(
-      { _id: contract._id, status: 'Active', isArchived: false },
-      { $set: { status: 'Expired' } },
-      { new: false }
-    );
+    // The status, archive and revision guards make this a compare-and-set: a
+    // contract renewed, edited, closed, or archived since the scan is left
+    // alone. A later expiry pass can retry if it remains eligible.
+    const flipped = await compareAndSetContract({
+      contractId: contract._id,
+      expectedRevision: contract.revision === undefined ? 0 : contract.revision,
+      expectedStatus: 'Active',
+      requireUnarchived: true,
+      set: { status: 'Expired' }
+    });
     if (flipped) {
       expired += 1;
       // Only a successful compare-and-set writes an audit entry, so repeated

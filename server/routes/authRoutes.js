@@ -21,12 +21,10 @@ const {
   maskEmail
 } = require('../utils/googleOtp');
 const {
-  RESET_TOKEN_TTL_MINUTES,
-  generateResetToken,
   hashResetToken,
-  buildResetLink,
   validatePassword
 } = require('../utils/passwordReset');
+const { enqueuePasswordResetEmail } = require('../services/passwordResetEmailQueue');
 const { generateToken } = require('../utils/sessionToken');
 
 const forgotPasswordLimiter = createRateLimiter({
@@ -100,6 +98,17 @@ const FORGOT_PASSWORD_MESSAGE =
 
 const INVALID_RESET_LINK_MESSAGE =
   'This reset link is invalid or has expired. Please request a new one.';
+
+// A deactivated account cannot sign in, so it cannot complete a reset either:
+// the reset would have ended with a password that no sign-in can use. The
+// wording is the one the Google sign-in path already gives for an inactive
+// account, and it is safe here for the same reason it is safe there: the
+// caller has proved control of the account (a verified Google identity there, a
+// live reset link delivered to the mailbox here), so naming the state tells
+// them nothing they cannot already see and this endpoint cannot be used to
+// probe which addresses are registered. The endpoints that cannot prove
+// control keep the generic wording (login, forgot-password).
+const INACTIVE_ACCOUNT_MESSAGE = 'This account is inactive. Contact an administrator.';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RESET_TOKEN_PATTERN = /^[a-fA-F0-9]{64}$/;
@@ -315,128 +324,221 @@ router.post('/google/begin', googleBeginLimiter, async (req, res, next) => {
 // verified Google identity. A client-supplied email is deliberately ignored;
 // the challenge's googleSub/email are the only identity used.
 router.post('/google/verify-otp', googleVerifyLimiter, async (req, res, next) => {
-  const { challengeId, otp } = req.body || {};
+  try {
+    const { challengeId, otp } = req.body || {};
 
-  if (typeof challengeId !== 'string' || !CHALLENGE_ID_PATTERN.test(challengeId)) {
-    return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
-  }
-  if (typeof otp !== 'string' || !OTP_PATTERN.test(otp)) {
-    return res.status(400).json({ message: 'Invalid verification code. Please try again.' });
-  }
+    if (typeof challengeId !== 'string' || !CHALLENGE_ID_PATTERN.test(challengeId)) {
+      return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+    }
+    if (typeof otp !== 'string' || !OTP_PATTERN.test(otp)) {
+      return res.status(400).json({ message: 'Invalid verification code. Please try again.' });
+    }
 
-  // Read once so each failure can be explained without revealing internals.
-  const challenge = await GoogleOtpChallenge.findOne({ challengeId });
-  if (!challenge || challenge.usedAt) {
-    return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
-  }
-  if (challenge.expiresAt.getTime() <= Date.now()) {
-    return res.status(400).json({ message: 'This verification code has expired. Request a new code.' });
-  }
-  if (challenge.attempts >= challenge.maxAttempts) {
-    return res.status(400).json({ message: 'Too many attempts. Request a new verification code.' });
-  }
-
-  // Atomically consume one attempt. The filter refuses a challenge that was
-  // already used, just expired, or has already hit the attempt cap.
-  const updated = await GoogleOtpChallenge.findOneAndUpdate(
-    {
-      challengeId,
-      usedAt: null,
-      expiresAt: { $gt: new Date() },
-      attempts: { $lt: OTP_MAX_ATTEMPTS }
-    },
-    { $inc: { attempts: 1 } },
-    { new: true }
-  );
-  if (!updated) {
-    return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
-  }
-
-  // Constant-time comparison against the stored hash.
-  if (!otpHashesMatch(otp, updated.otpHash)) {
-    if (updated.attempts >= updated.maxAttempts) {
+    // Read once so each failure can be explained without revealing internals.
+    const challenge = await GoogleOtpChallenge.findOne({ challengeId });
+    if (!challenge || challenge.usedAt) {
+      return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+    }
+    if (challenge.expiresAt.getTime() <= Date.now()) {
+      return res.status(400).json({ message: 'This verification code has expired. Request a new code.' });
+    }
+    if (challenge.attempts >= challenge.maxAttempts) {
       return res.status(400).json({ message: 'Too many attempts. Request a new verification code.' });
     }
-    return res.status(400).json({ message: 'Invalid verification code. Please try again.' });
-  }
 
-  // Success: consume the challenge NOW (single use), then resolve the account.
-  await GoogleOtpChallenge.updateOne({ _id: updated._id }, { usedAt: new Date() });
+    // Atomically consume one attempt. The filter refuses a challenge that was
+    // already used, just expired, or has already hit the attempt cap.
+    const updated = await GoogleOtpChallenge.findOneAndUpdate(
+      {
+        challengeId,
+        usedAt: null,
+        expiresAt: { $gt: new Date() },
+        attempts: { $lt: OTP_MAX_ATTEMPTS }
+      },
+      { $inc: { attempts: 1 } },
+      { new: true }
+    );
+    if (!updated) {
+      return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+    }
 
-  let user;
-  try {
-    user = await resolveGoogleUser({
-      googleSub: updated.googleSub,
-      email: updated.email,
-      name: updated.name
+    // Constant-time comparison against the stored hash.
+    if (!otpHashesMatch(otp, updated.otpHash)) {
+      if (updated.attempts >= updated.maxAttempts) {
+        return res.status(400).json({ message: 'Too many attempts. Request a new verification code.' });
+      }
+      return res.status(400).json({ message: 'Invalid verification code. Please try again.' });
+    }
+
+    // Success: atomically consume the still-live challenge before resolving the
+    // account. Concurrent requests may both have verified the hash above, but
+    // only one can match this conditional write and issue a session.
+    const consumed = await GoogleOtpChallenge.findOneAndUpdate(
+      {
+        _id: updated._id,
+        usedAt: null,
+        expiresAt: { $gt: new Date() }
+      },
+      { $set: { usedAt: new Date() } },
+      { new: true }
+    );
+    if (!consumed) {
+      return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+    }
+
+    let user;
+    try {
+      user = await resolveGoogleUser({
+        googleSub: updated.googleSub,
+        email: updated.email,
+        name: updated.name
+      });
+    } catch (error) {
+      if (error.status >= 400 && error.status < 500 && error.expose) {
+        return res.status(error.status).json({ message: error.message });
+      }
+      return next(error);
+    }
+
+    // The existing JWT and session behaviour, identical to every other login path.
+    return res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      department: user.department,
+      status: user.status,
+      preferences: user.preferences,
+      token: generateToken(user)
     });
   } catch (error) {
-    if (error.status >= 400 && error.status < 500 && error.expose) {
-      return res.status(error.status).json({ message: error.message });
-    }
     return next(error);
   }
-
-  // The existing JWT and session behaviour, identical to every other login path.
-  return res.json({
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    department: user.department,
-    status: user.status,
-    preferences: user.preferences,
-    token: generateToken(user)
-  });
 });
 
-// Step 3: re-send a code for the same challenge. The old code is only
-// invalidated after a successful send, so a transport failure never leaves the
-// user with no working code (mirrors the password-reset mailer behaviour).
+// Step 3: re-send a code for the same challenge. The resend claim persists the
+// new code before delivery; on a delivery failure, a guarded compensation
+// restores the previous state only if nobody has used or replaced this claim.
 router.post('/google/resend-otp', googleResendLimiter, async (req, res, next) => {
-  const { challengeId } = req.body || {};
-
-  if (typeof challengeId !== 'string' || !CHALLENGE_ID_PATTERN.test(challengeId)) {
-    return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
-  }
-
-  const challenge = await GoogleOtpChallenge.findOne({ challengeId });
-  if (!challenge || challenge.usedAt) {
-    return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
-  }
-  if (challenge.expiresAt.getTime() <= Date.now()) {
-    return res.status(400).json({ message: 'This verification code has expired. Request a new code.' });
-  }
-  if (challenge.resendCount >= OTP_MAX_RESENDS) {
-    return res.status(429).json({ message: 'Too many verification codes requested. Please try again later.' });
-  }
-
-  const waitMs = challenge.resendAvailableAt.getTime() - Date.now();
-  if (waitMs > 0) {
-    res.setHeader('Retry-After', String(Math.ceil(waitMs / 1000)));
-    return res.status(429).json({ message: 'Please wait before requesting another verification code.' });
-  }
-
-  const otp = generateOtp();
   try {
-    await mailer.sendOtpEmail({ to: challenge.email, otp, expiresInMinutes: OTP_TTL_SECONDS / 60 });
-  } catch (error) {
-    console.error('Google sign-in verification code resend could not be sent:', mailer.describeEmailError(error));
-    return res.status(503).json({ message: 'Unable to send the verification code. Please try again.' });
-  }
+    const { challengeId } = req.body || {};
 
-  await GoogleOtpChallenge.updateOne(
-    { _id: challenge._id },
-    {
-      otpHash: hashOtp(otp),
-      expiresAt: new Date(Date.now() + OTP_TTL_MS),
-      attempts: 0,
-      resendCount: challenge.resendCount + 1,
-      resendAvailableAt: new Date(Date.now() + RESEND_COOLDOWN_MS)
+    if (typeof challengeId !== 'string' || !CHALLENGE_ID_PATTERN.test(challengeId)) {
+      return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
     }
-  );
 
-  return res.json({ message: 'New verification code sent.', resendAvailableIn: RESEND_COOLDOWN_SECONDS });
+    const challenge = await GoogleOtpChallenge.findOne({ challengeId });
+    if (!challenge || challenge.usedAt) {
+      return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+    }
+    if (challenge.expiresAt.getTime() <= Date.now()) {
+      return res.status(400).json({ message: 'This verification code has expired. Request a new code.' });
+    }
+    if (challenge.resendCount >= OTP_MAX_RESENDS) {
+      return res.status(429).json({ message: 'Too many verification codes requested. Please try again later.' });
+    }
+
+    const waitMs = challenge.resendAvailableAt.getTime() - Date.now();
+    if (waitMs > 0) {
+      res.setHeader('Retry-After', String(Math.ceil(waitMs / 1000)));
+      return res.status(429).json({ message: 'Please wait before requesting another verification code.' });
+    }
+
+    const otp = generateOtp();
+    const nextOtpHash = hashOtp(otp);
+    const claimTime = new Date();
+    const nextExpiresAt = new Date(claimTime.getTime() + OTP_TTL_MS);
+    const nextResendAvailableAt = new Date(claimTime.getTime() + RESEND_COOLDOWN_MS);
+
+    // This is the authoritative eligibility check. Competing resend calls may
+    // both pass the reads above, but only one can atomically advance the
+    // cooldown/count and replace the code while all eligibility conditions hold.
+    const claimed = await GoogleOtpChallenge.findOneAndUpdate(
+      {
+        _id: challenge._id,
+        challengeId,
+        usedAt: null,
+        expiresAt: { $gt: claimTime },
+        resendAvailableAt: { $lte: claimTime },
+        resendCount: { $lt: OTP_MAX_RESENDS }
+      },
+      {
+        $set: {
+          otpHash: nextOtpHash,
+          expiresAt: nextExpiresAt,
+          attempts: 0,
+          resendAvailableAt: nextResendAvailableAt
+        },
+        $inc: { resendCount: 1 }
+      },
+      { new: true }
+    );
+
+    if (!claimed) {
+      // The challenge may have expired, been consumed, or been claimed by a
+      // concurrent resend since the initial read. Re-read only to preserve the
+      // established response for each ineligible state; no write occurs here.
+      const current = await GoogleOtpChallenge.findOne({ challengeId });
+      if (!current || current.usedAt || current.expiresAt.getTime() <= Date.now()) {
+        return res.status(400).json({ message: 'This verification session is invalid or has expired.' });
+      }
+      if (current.resendCount >= OTP_MAX_RESENDS) {
+        return res.status(429).json({ message: 'Too many verification codes requested. Please try again later.' });
+      }
+      const retryWaitMs = current.resendAvailableAt.getTime() - Date.now();
+      if (retryWaitMs > 0) {
+        res.setHeader('Retry-After', String(Math.ceil(retryWaitMs / 1000)));
+        return res.status(429).json({ message: 'Please wait before requesting another verification code.' });
+      }
+      return res.status(409).json({ message: 'This verification session changed. Please try again.' });
+    }
+
+    try {
+      await mailer.sendOtpEmail({ to: challenge.email, otp, expiresInMinutes: OTP_TTL_SECONDS / 60 });
+    } catch (error) {
+      console.error('Google sign-in verification code resend could not be sent:', mailer.describeEmailError(error));
+
+      // Restore the prior state only while this exact claim is still current.
+      // The used/expiry guards ensure a completed verification or expired
+      // challenge is never reactivated; the claim values protect a newer resend.
+      try {
+        const restored = await GoogleOtpChallenge.updateOne(
+          {
+            _id: claimed._id,
+            challengeId,
+            usedAt: null,
+            expiresAt: { $eq: nextExpiresAt, $gt: new Date() },
+            otpHash: nextOtpHash,
+            attempts: 0,
+            resendCount: claimed.resendCount,
+            resendAvailableAt: nextResendAvailableAt
+          },
+          {
+            $set: {
+              otpHash: challenge.otpHash,
+              expiresAt: challenge.expiresAt,
+              attempts: challenge.attempts,
+              resendCount: challenge.resendCount,
+              resendAvailableAt: challenge.resendAvailableAt
+            }
+          }
+        );
+        if (restored?.matchedCount !== 1) {
+          console.warn('Google OTP resend compensation skipped because the challenge changed or expired');
+        }
+      } catch (restoreError) {
+        console.error('Google OTP resend compensation failed', {
+          errorName: restoreError?.name,
+          errorCode: restoreError?.code
+        });
+      }
+      return res.status(503).json({ message: 'Unable to send the verification code. Please try again.' });
+    }
+
+    return res.json({ message: 'New verification code sent.', resendAvailableIn: RESEND_COOLDOWN_SECONDS });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.post('/forgot-password', forgotPasswordLimiter, async (req, res, next) => {
@@ -450,25 +552,21 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res, next) =>
     const user = await User.findOne({ email: normalizedEmail });
 
     if (user) {
+      // The email is queued, not sent from here. Sending it inside the request
+      // made the response wait for the mail provider, and that wait was the
+      // side channel: a request for an existing account took as long as the
+      // provider needed to answer, while an unknown address answered at once.
+      // Queuing leaves a local database write in the request path and no
+      // dependence on the provider at all.
+      //
+      // The job holds no token: the worker generates it when the job is
+      // delivered, so the raw token is never stored and only its hash is.
       try {
-        // The hash is stored before the send is attempted, so a transport
-        // failure leaves the token intact and still usable. Clearing it here
-        // would invalidate a token the user may already have received.
-        const { token, tokenHash, expiresAt } = generateResetToken();
-        user.passwordResetToken = tokenHash; // raw token is never stored
-        user.passwordResetExpires = expiresAt;
-        await user.save();
-
-        await mailer.sendPasswordResetEmail({
-          to: user.email,
-          resetLink: buildResetLink(token),
-          expiresInMinutes: RESET_TOKEN_TTL_MINUTES
-        });
+        await enqueuePasswordResetEmail({ userId: user._id, to: user.email });
       } catch (error) {
-        // describeEmailError is the only sanitised form: the transports tried
-        // and their reasons, never the token, the reset link, the API key or
-        // the recipient address. The stored token above stays valid.
-        console.error('Password reset email could not be sent:', mailer.describeEmailError(error));
+        // A queue write that fails must not become an oracle: every caller
+        // gets the same answer, and the failure is reported.
+        console.error('Password reset email could not be queued:', mailer.sanitizeForLog(error.message));
       }
     }
 
@@ -487,14 +585,27 @@ router.post('/reset-password', resetPasswordLimiter, async (req, res, next) => {
       return res.status(400).json({ message: INVALID_RESET_LINK_MESSAGE });
     }
 
+    const tokenHash = hashResetToken(token);
+
     // Token exists, is valid and has not expired (or has already been used,
-    // since successful resets clear the stored hash).
+    // since successful resets clear the stored hash). This lookup only spares
+    // a password hash for a link that cannot work: the update below is the one
+    // that decides whether the token may still be spent.
     const user = await User.findOne({
-      passwordResetToken: hashResetToken(token),
+      passwordResetToken: tokenHash,
       passwordResetExpires: { $gt: new Date() }
     });
     if (!user) {
       return res.status(400).json({ message: INVALID_RESET_LINK_MESSAGE });
+    }
+
+    // A deactivated account is refused outright. Its password is left alone,
+    // the account is NOT reactivated, and the link is not spent, because no
+    // reset happened: the same rule as a rejected password. The account can
+    // only be used again once an administrator reactivates it, and the same
+    // link still works after that.
+    if (user.status === 'Inactive') {
+      return res.status(401).json({ message: INACTIVE_ACCOUNT_MESSAGE });
     }
 
     const passwordError = validatePassword(password);
@@ -502,12 +613,53 @@ router.post('/reset-password', resetPasswordLimiter, async (req, res, next) => {
       return res.status(400).json({ message: passwordError });
     }
 
-    user.password = password; // hashed by the existing bcrypt pre-save hook
-    user.passwordResetToken = null;
-    user.passwordResetExpires = null;
-    // Invalidate sessions issued before this reset (JWT token versioning).
-    user.tokenVersion = (user.tokenVersion || 0) + 1;
-    await user.save();
+    // The password is hashed before the token is claimed, so a hashing failure
+    // leaves the link usable and no token is spent on a reset that cannot
+    // happen.
+    const hashedPassword = await User.hashPassword(password);
+
+    // The new password, the cleared token and the session invalidation are one
+    // atomic write. The filter still carries the token hash, so only the
+    // request that finds the live token can change anything: once the winner
+    // has written, a concurrent request holding the same token matches
+    // nothing, is told the link is invalid, and never writes a password of its
+    // own. A request that fails before this point leaves the token untouched.
+    //
+    // The filter also carries the account status, so an account that is
+    // deactivated between the lookup above and this write cannot be reset
+    // either: it is refused exactly as if it had been inactive all along.
+    const result = await User.updateOne(
+      {
+        _id: user._id,
+        passwordResetToken: tokenHash,
+        passwordResetExpires: { $gt: new Date() },
+        status: { $ne: 'Inactive' }
+      },
+      {
+        $set: {
+          password: hashedPassword,
+          passwordResetToken: null,
+          passwordResetExpires: null
+        },
+        // Invalidate sessions issued before this reset (JWT token versioning).
+        $inc: { tokenVersion: 1 }
+      },
+      { runValidators: true }
+    );
+
+    if (!result.matchedCount) {
+      // The write matched nothing, so either another request spent the token
+      // first, or the account was deactivated between the lookup above and
+      // this write. The two are told apart, so a request that arrives after an
+      // account was switched off is never answered with the claim that it can
+      // now sign in.
+      const current = await User.findById(user._id).select('status');
+      if (current && current.status === 'Inactive') {
+        return res.status(401).json({ message: INACTIVE_ACCOUNT_MESSAGE });
+      }
+      // Another request spent the token first, so this one has nothing to do.
+      return res.status(400).json({ message: INVALID_RESET_LINK_MESSAGE });
+    }
 
     return res.json({ message: 'Your password has been reset. You can now sign in.' });
   } catch (error) {

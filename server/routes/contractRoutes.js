@@ -3,11 +3,13 @@ const mongoose = require('mongoose');
 const router = express.Router();
 const Contract = require('../models/Contract');
 const User = require('../models/User');
+const ActivityLog = require('../models/ActivityLog');
 const { protect, authorize } = require('../middleware/auth');
 const logActivity = require('../utils/activityLogger');
-const { canAccessContract, employeeContractScope, isPrivileged } = require('../utils/access');
+const { canAccessContract, canAssignContract, employeeContractScope, isPrivileged } = require('../utils/access');
 const { canTransition, VALID_STATUSES } = require('../utils/contractTransitions');
-const { evaluateContractEdit } = require('../utils/contractEditLock');
+const { evaluateContractEdit, sameValue } = require('../utils/contractEditLock');
+const { compareAndSetContract } = require('../utils/contractRevision');
 
 const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -65,6 +67,20 @@ const resolveAssignee = async (assignedUser) => {
     return { error: { status: 404, message: 'Assigned user not found' } };
   }
   return { assignee: assignee._id };
+};
+
+// Resolves user ids to display names, for the activity log.
+//
+// Names only. The log records who held a contract and who holds it now; it is
+// not a directory of email addresses, and nothing else about the users is
+// copied into it.
+const assigneeNames = async (ids) => {
+  const wanted = [...new Set(ids.filter(Boolean))];
+  const names = new Map();
+  if (wanted.length === 0) return names;
+  const people = await User.find({ _id: { $in: wanted } }).select('_id name');
+  people.forEach((person) => names.set(person._id.toString(), person.name));
+  return names;
 };
 
 const nextContractNumber = async () => {
@@ -350,11 +366,92 @@ router.put('/:id', protect, async (req, res, next) => {
       });
     }
 
-    Object.assign(contract, updates);
-    await contract.save();
+    // The assignee decides who works the contract and who can open it, so
+    // moving it is a management act rather than an editing act: only an
+    // administrator or a manager may hand a contract to somebody else, on
+    // every status.
+    //
+    // The check is on the EFFECTIVE VALUE, not on the presence of the field,
+    // for the same reason the edit lock compares a locked field by value: a
+    // form that resubmits the unchanged current assignee - which the
+    // EditContract screen always does - must still be accepted. Clearing an
+    // assignee that is already unset is the same no-op.
+    //
+    // It runs AFTER the edit-lock check on purpose. On a locked contract the
+    // assignee cannot be changed by anybody, and the 409 answer tells the
+    // caller that an amendment request is the route to take; answering 403
+    // first would send an administrator to the wrong place and would hide the
+    // amendment workflow from the one role that can use it.
+    const assigneeChangeRequested = updates.assignedUser !== undefined
+      && !sameValue('assignedUser', updates.assignedUser, contract.assignedUser);
+    if (assigneeChangeRequested && !canAssignContract(req.user)) {
+      return res.status(403).json({
+        message: 'Only administrators and managers can change the contract assignee'
+      });
+    }
 
-    await logActivity(req.user._id, 'Contract Updated', contract._id, `Updated details for ${contract.contractNumber}`);
-    res.json(contract);
+    // Captured before the update is applied, so the log can name the assignee
+    // the contract is leaving as well as the one it is going to.
+    const previousAssignee = contract.assignedUser ? contract.assignedUser.toString() : null;
+    const expectedRevision = contract.revision === undefined ? 0 : contract.revision;
+    const updatedContract = await compareAndSetContract({
+      contractId: contract._id,
+      expectedRevision,
+      set: updates
+    });
+    if (!updatedContract) {
+      return res.status(409).json({ message: 'Contract was updated by another request or has an active operation. Refresh and try again.' });
+    }
+
+    try {
+      // The shared logger catches errors for legacy callers. Keep these
+      // required update events visible instead of reporting success when an
+      // audit write fails after the Contract CAS has already committed.
+      await ActivityLog.create({
+        user: req.user._id,
+        contract: updatedContract._id,
+        action: 'Contract Updated',
+        details: `Updated details for ${updatedContract.contractNumber}`
+      });
+
+      // A change of assignee is recorded on its own line, naming who held the
+      // contract before and who holds it now. The target user also drives the
+      // notification feed; clearing an assignment has no target.
+      if (assigneeChangeRequested) {
+        const newAssignee = updates.assignedUser ? updates.assignedUser.toString() : null;
+        const names = await assigneeNames([previousAssignee, newAssignee]);
+        const from = previousAssignee ? (names.get(previousAssignee) || 'another user') : 'Unassigned';
+        const to = newAssignee ? (names.get(newAssignee) || 'another user') : 'Unassigned';
+        await ActivityLog.create({
+          user: req.user._id,
+          contract: updatedContract._id,
+          action: 'Contract Reassigned',
+          details: `Assignee changed from ${from} to ${to} on ${updatedContract.contractNumber}`,
+          ...(previousAssignee ? { previousUser: previousAssignee } : {}),
+          ...(newAssignee ? { targetUser: newAssignee } : {})
+        });
+      }
+    } catch (error) {
+      // The Contract CAS cannot be rolled back here. Keep the usual 500 status,
+      // but tell the caller the Contract is committed and audit completion is
+      // unconfirmed so a generic failure is not mistaken for a rollback.
+      try {
+        console.error('Contract update committed but activity logging did not complete', {
+          errorName: error?.name,
+          errorCode: error?.code
+        });
+      } catch (_) {
+        // A failing diagnostic sink must not prevent the explicit partial-
+        // commit response below from reaching the caller.
+      }
+      return res.status(500).json({
+        message: 'Contract update was committed, but required activity logging did not complete successfully. Audit records may be incomplete; the Contract update was not rolled back.',
+        contractUpdated: true,
+        auditStatus: 'not_confirmed'
+      });
+    }
+
+    res.json(updatedContract);
   } catch (error) {
     next(error);
   }
@@ -365,10 +462,26 @@ router.patch('/:id/archive', protect, authorize('Admin'), async (req, res, next)
     const contract = await Contract.findById(req.params.id);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
 
-    contract.isArchived = true;
-    await contract.save();
+    const expectedRevision = contract.revision === undefined ? 0 : contract.revision;
+    const archived = await compareAndSetContract({
+      contractId: contract._id,
+      expectedRevision,
+      set: { isArchived: true }
+    });
+    if (!archived) {
+      return res.status(409).json({ message: 'Contract was updated by another request. Refresh and try again.' });
+    }
 
-    await logActivity(req.user._id, 'Contract Archived', contract._id, `Archived contract ${contract.contractNumber}`);
+    // Keep the existing audit event, but await the model write directly here:
+    // the shared logger intentionally catches errors for legacy callers, while
+    // an archive must not report success if its required event could not be
+    // recorded.
+    await ActivityLog.create({
+      user: req.user._id,
+      contract: contract._id,
+      action: 'Contract Archived',
+      details: `Archived contract ${contract.contractNumber}`
+    });
     res.json({ message: 'Contract archived successfully' });
   } catch (error) {
     next(error);

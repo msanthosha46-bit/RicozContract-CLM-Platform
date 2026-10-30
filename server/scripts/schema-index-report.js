@@ -28,13 +28,14 @@ const Obligation = require('../models/Obligation');
 const Milestone = require('../models/Milestone');
 const Renewal = require('../models/Renewal');
 const ActivityLog = require('../models/ActivityLog');
+const PasswordResetEmailJob = require('../models/PasswordResetEmailJob');
 
 const {
   readSchemaIndexReport,
   describeSchemaIndexReport
 } = require('../utils/schemaIndexes');
 
-const MODELS = [User, Contract, ContractDocument, Approval, Obligation, Milestone, Renewal, ActivityLog];
+const MODELS = [User, Contract, ContractDocument, Approval, Obligation, Milestone, Renewal, ActivityLog, PasswordResetEmailJob];
 
 const run = async () => {
   if (!process.env.MONGO_URI) {

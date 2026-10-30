@@ -1,17 +1,18 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import API from '../../services/api';
-import { Bell, Flag, LogOut, Menu, Mail, Settings, User as UserIcon, X, CalendarClock, AlertTriangle, ShieldCheck, FileText, FilePen, Gavel } from 'lucide-react';
+import { Bell, Flag, LogOut, Menu, Mail, Settings, User as UserIcon, UserPlus, X, CalendarClock, AlertTriangle, ShieldCheck, FileText, FilePen, Gavel } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import ThemeToggle from './ThemeToggle';
 import { canManage, isAdmin, initialsFor, roleLabel } from '../../utils/roles';
 import { pruneSeenIds, readSeenIds, writeSeenIds } from '../../utils/notificationSeen';
 
-// The path a notification points at decides the icon, so the five real
+// The path a notification points at decides the icon, so the six real
 // sources (expiring contracts, overdue obligations, overdue milestones,
-// pending approvals, contract amendments) are visually distinguishable at a
-// glance. `approval` and `amendment` only ever arrive for Admin/Manager — the
-// endpoint withholds them from Employees.
+// pending approvals, contract amendments, contract assignments) are visually
+// distinguishable at a glance. `approval` and `amendment` only ever arrive for
+// Admin/Manager — the endpoint withholds them from Employees. `reassignment`
+// arrives only for the user the contract was handed to.
 //
 // The server reports both work-item types as `overdue`; the stable `id`
 // prefix (`milestone-` vs `obligation-`) tells the two apart so each group
@@ -32,10 +33,11 @@ const NOTIFICATION_META = {
 	approval: { icon: ShieldCheck, tone: 'text-[#d51d29] dark:text-[#ff8a90]', group: 'Pending approvals' },
 	amendment: { icon: FilePen, tone: 'text-[#d51d29] dark:text-[#ff8a90]', group: 'Amendments to decide' },
 	'amendment-decision': { icon: Gavel, tone: 'text-slate-600 dark:text-slate-300', group: 'Your amendment requests' },
+	reassignment: { icon: UserPlus, tone: 'text-[#1d4ed8] dark:text-blue-300', group: 'Assignments' },
 	other: { icon: FileText, tone: 'text-slate-500 dark:text-slate-400', group: 'Updates' }
 };
 
-const NOTIFICATION_ORDER = ['expiry', 'obligation', 'milestone', 'approval', 'amendment', 'amendment-decision', 'other'];
+const NOTIFICATION_ORDER = ['expiry', 'obligation', 'milestone', 'approval', 'amendment', 'amendment-decision', 'reassignment', 'other'];
 
 const typeOf = (item) => {
 	if (typeof item?.id === 'string' && item.id.startsWith('milestone-')) return 'milestone';

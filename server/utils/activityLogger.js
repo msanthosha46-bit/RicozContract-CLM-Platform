@@ -1,13 +1,27 @@
 const ActivityLog = require('../models/ActivityLog');
 
-const logActivity = async (userId, action, contractId = null, details = '') => {
+// `extra` carries the optional structured fields of an entry: the recipient of a
+// reassignment (`targetUser`), the assignee it was taken from (`previousUser`).
+// It is merged into the stored document, so a caller can only ever add fields
+// the schema declares.
+const logActivity = async (userId, action, contractId = null, details = '', extra = {}) => {
   try {
-    await ActivityLog.create({
+    const entry = {
       user: userId,
       contract: contractId,
       action,
-      details
-    });
+      details,
+      ...extra
+    };
+    if (extra.operationId && contractId) {
+      await ActivityLog.findOneAndUpdate(
+        { operationId: extra.operationId },
+        { $setOnInsert: entry },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    } else {
+      await ActivityLog.create(entry);
+    }
   } catch (err) {
     console.error('Failed to log activity:', err.message);
   }

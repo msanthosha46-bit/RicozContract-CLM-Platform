@@ -5,6 +5,7 @@ const Approval = require('../models/Approval');
 const Obligation = require('../models/Obligation');
 const Milestone = require('../models/Milestone');
 const ContractAmendment = require('../models/ContractAmendment');
+const ActivityLog = require('../models/ActivityLog');
 const { protect } = require('../middleware/auth');
 const { employeeContractScope, isPrivileged } = require('../utils/access');
 const { expiringWindow, formatUtcDate } = require('../utils/dateWindow');
@@ -129,6 +130,30 @@ router.get('/', protect, async (req, res, next) => {
         title: `Amendment ${amendment.status.toLowerCase()}`,
         detail: `${amendment.contract?.contractNumber || 'Contract'}${amendment.decidedBy?.name ? ` · by ${amendment.decidedBy.name}` : ''}`,
         href: `/contracts/${amendment.contract?._id || ''}`
+      });
+    });
+
+    // A contract that was handed to this user is announced to them, and to
+    // nobody else: the entry is addressed to one recipient, so the query is
+    // scoped to the reader and no other role learns who was assigned what.
+    //
+    // It is read off the activity log, which is the one place that already
+    // records who made the change, so there is still no stored notification
+    // and no second source of truth. The id is derived from the activity
+    // entry, so it is stable across requests and the client's seen-state does
+    // not re-arm on reload. An assignment that was cleared carries no
+    // recipient and is therefore not announced to anybody.
+    const reassignments = await ActivityLog.find({ action: 'Contract Reassigned', targetUser: req.user._id })
+      .populate('contract', 'title contractNumber')
+      .sort({ createdAt: -1 })
+      .limit(8);
+    reassignments.forEach((entry) => {
+      items.push({
+        id: `reassignment-${entry._id}`,
+        type: 'reassignment',
+        title: 'Contract assigned to you',
+        detail: `${entry.contract?.contractNumber || 'Contract'}${entry.contract?.title ? ` · ${entry.contract.title}` : ''}`,
+        href: `/contracts/${entry.contract?._id || ''}`
       });
     });
 

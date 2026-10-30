@@ -32,10 +32,18 @@ const userSchema = new mongoose.Schema({
 // (and non-cleared nulls) are indexed. Expiry is enforced in the query itself.
 userSchema.index({ passwordResetToken: 1 }, { sparse: true });
 
+const BCRYPT_SALT_ROUNDS = 10;
+
+// The one place a password is hashed. The save hook and the atomic reset
+// update share it, so a password can never be hashed two different ways.
+const hashPassword = async (password) => {
+  const salt = await bcrypt.genSalt(BCRYPT_SALT_ROUNDS);
+  return bcrypt.hash(password, salt);
+};
+
 userSchema.pre('save', async function (next) {
   if (!this.password || !this.isModified('password')) return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
+  this.password = await hashPassword(this.password);
   next();
 });
 
@@ -46,3 +54,4 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 module.exports = mongoose.model('User', userSchema);
 module.exports.USER_ROLES = USER_ROLES;
 module.exports.USER_STATUSES = USER_STATUSES;
+module.exports.hashPassword = hashPassword;

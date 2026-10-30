@@ -184,6 +184,73 @@ db.contractdocuments.getIndexes()
 
 Both aggregations must return nothing before `indexes:sync` will build the index. MongoDB cannot create a unique index while duplicate values exist. Resolving duplicates means changing production records, so it needs a separately approved data plan; do not delete or renumber documents as part of deployment.
 
+### Activity log index
+
+The notification feed tells the new assignee that a contract was handed to them. It is a derived feed: it reads the reassignment entries out of the activity log, filtered to the one reader and sorted newest first. That query needs an index on `activitylogs`:
+
+```js
+{ targetUser: 1, createdAt: -1 }
+```
+
+Without it, every notification load scans the whole collection, and the collection is append-only: entries are never deleted, so the scan grows for as long as the service runs.
+
+As with every other declared index, the server does **not** create this one implicitly — `autoIndex` is disabled in `server/config/db.js`. There is no script that builds it, so it is a separately approved step.
+
+**1. Check the current state (read-only).**
+
+```bash
+cd server
+npm run indexes:report
+```
+
+The report only reads: it lists the declared indexes and the indexes the live database actually has, and it never creates, drops or syncs an index and never writes a document. The `activitylogs` section shows one line per declared index:
+
+```text
+activitylogs
+  collection present     : yes
+  indexes declared       : 3
+  indexes present        : 2
+  declared but missing   : 1
+  present but mismatched : 0
+    [ok] createdAt_-1
+    [MISSING] targetUser_1_createdAt_-1
+    [ok] _id_
+```
+
+`[MISSING]` means the schema promises an index the database does not have, and the report exits with status `1` while any collection is out of sync.
+
+**2. Create it, in an approved change window.**
+
+The command is run once, by hand, against the production database through `mongosh`, using the same connection the server uses (keep the connection string out of shell history and out of any log):
+
+```js
+db.activitylogs.createIndex({ targetUser: 1, createdAt: -1 }, { name: "targetUser_1_createdAt_-1" })
+```
+
+Notes before running it:
+
+- The index is **not unique**, so there is no duplicate-value check to pass first. Unlike the unique document index above, it cannot fail on existing data and it does not need a data plan.
+- The command **changes no document**. It only adds an index.
+- The build is a foreground operation on the collection, so run it in a low-traffic window; reads of `activitylogs` are slowed while it runs.
+- `createIndex` with the same key and the same name as an index that already exists is a no-op, so the command is safe to repeat.
+
+**3. Verify afterwards.**
+
+Re-run the read-only report and confirm the index is now present:
+
+```bash
+cd server
+npm run indexes:report
+```
+
+The line must read `[ok] targetUser_1_createdAt_-1`, `declared but missing` must be `0`, and the summary must report `collections out of sync : 0`. The report exits with status `0` when everything agrees.
+
+The same state can be confirmed directly in `mongosh`:
+
+```js
+db.activitylogs.getIndexes()
+```
+
 ## Password reset email
 
 The reset link is sent by email, so the API needs a mail transport. Two are

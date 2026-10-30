@@ -31,6 +31,18 @@ const PRIVILEGED_ROLES = new Set(['Admin', 'Manager']);
 // allow-list in a single place is honoured everywhere at once.
 const isPrivileged = (user) => Boolean(user && PRIVILEGED_ROLES.has(user.role));
 
+// Who may change the assignee of a contract.
+//
+// The assignee decides who works the contract and who can open it, so moving it
+// is a management act rather than an editing act: it hands a contract to
+// someone else. Only an administrator or a manager may do it, on every status.
+//
+// The rule is the same allow-list the route guards use
+// (`authorize('Admin', 'Manager')`), read from the same constant, so the two
+// cannot disagree: a role that is missing, misspelled or unknown is NOT
+// privileged here either, exactly as `isPrivileged` already decides.
+const canAssignContract = (user) => isPrivileged(user);
+
 const canAccessContract = (user, contract) => {
   if (!user || !contract) return false;
   if (isPrivileged(user)) return true;
@@ -43,4 +55,4 @@ const employeeContractScope = (userId) => ({
   $or: [{ createdBy: userId }, { assignedUser: userId }]
 });
 
-module.exports = { idOf, isPrivileged, canAccessContract, employeeContractScope, PRIVILEGED_ROLES };
+module.exports = { idOf, isPrivileged, canAccessContract, canAssignContract, employeeContractScope, PRIVILEGED_ROLES };

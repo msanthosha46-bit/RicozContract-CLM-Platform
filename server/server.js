@@ -4,12 +4,21 @@ const connectDB = require('./config/db');
 const markOverdueItems = require('./utils/overdueUpdater');
 const expireEligibleContracts = require('./utils/expiryUpdater');
 const ContractDocument = require('./models/ContractDocument');
+const Contract = require('./models/Contract');
+const Renewal = require('./models/Renewal');
+const ActivityLog = require('./models/ActivityLog');
 const { validateEmailConfig, sanitizeForLog } = require('./utils/mailer');
 const { createApp, getAllowedOrigins, isProduction } = require('./app');
 const {
   readDocumentVersionIndexReport,
   describeDocumentIndexReport
 } = require('./utils/documentIndexes');
+const { readRenewalOperationIndexReadiness } = require('./utils/schemaIndexes');
+const { setRenewalOperationsReady } = require('./utils/renewalReadiness');
+const {
+  startPasswordResetEmailWorker,
+  stopPasswordResetEmailWorker
+} = require('./services/passwordResetEmailQueue');
 
 dotenv.config();
 
@@ -109,6 +118,27 @@ const reportDocumentVersionIndex = async () => {
   }
 };
 
+// Renewal mutations require all three operation indexes. This check is
+// read-only; if any index is missing, mismatched, or unreadable, the service
+// remains available while renewal writes fail closed in the renewal router.
+const verifyRenewalOperationIndexes = async () => {
+  setRenewalOperationsReady(false);
+  try {
+    const report = await readRenewalOperationIndexReadiness({ Contract, Renewal, ActivityLog });
+    setRenewalOperationsReady(report.ready);
+    if (report.ready) {
+      console.log('Renewal operation indexes are present with the required unique partial definitions.');
+      return;
+    }
+    const notReady = report.checks.filter((check) => !check.ready)
+      .map((check) => `${check.collection}.${check.name}`);
+    console.error(`Renewal operations disabled; required indexes are missing or mismatched: ${notReady.join(', ')}`);
+  } catch (error) {
+    setRenewalOperationsReady(false);
+    console.error(`Renewal operations disabled; index verification failed: ${error.message}`);
+  }
+};
+
 // Start accepting requests only after the database connection is ready.
 const startServer = async () => {
   try {
@@ -119,6 +149,11 @@ const startServer = async () => {
   }
 
   await reportDocumentVersionIndex();
+  await verifyRenewalOperationIndexes();
+
+  // The password-reset emails that were requested while the process was down
+  // are waiting in the queue. The worker picks them up from there.
+  await startPasswordResetEmailWorker();
 
   server = app.listen(PORT, () => {
     console.log(`🚀 RicozContract Server running on port ${PORT}`);
@@ -141,6 +176,11 @@ const shutdown = async (signal) => {
   }, 10000);
 
   try {
+    // The worker is stopped first and the delivery in flight is waited for, so
+    // a link that is halfway through is not cut off by the shutdown. The job
+    // stays in the queue if it did not finish, and is picked up again on the
+    // next start.
+    await stopPasswordResetEmailWorker();
     if (server) {
       await new Promise((resolve) => server.close(resolve));
     }

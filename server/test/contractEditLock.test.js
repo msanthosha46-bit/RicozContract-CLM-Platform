@@ -1,9 +1,9 @@
 const assert = require('node:assert/strict');
-const path = require('node:path');
 const jwt = require('jsonwebtoken');
 const test = require('node:test');
-
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const { readFocusedTestConfig } = require('./helpers/testDatabase');
+const { mongoUri: TEST_DB_URI, jwtSecret: TEST_JWT_SECRET } = readFocusedTestConfig(process.env, { suiteName: 'editlock' });
+process.env.JWT_SECRET = TEST_JWT_SECRET;
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -18,21 +18,6 @@ const approvalRoutes = require('../routes/approvalRoutes');
 const renewalRoutes = require('../routes/renewalRoutes');
 const amendmentRoutes = require('../routes/amendmentRoutes');
 const { UNLOCKED_STATUSES, LOCKED_FIELDS, evaluateContractEdit, sameValue } = require('../utils/contractEditLock');
-const { syncDocumentVersionIndex } = require('../utils/documentIndexes');
-const { disposableTestDatabaseUri } = require('./helpers/testDatabase');
-
-// A test database of its own, ALWAYS, and never the application's connection
-// string. The original line here was `process.env.MONGO_URI || '..._test'`, and
-// the `dotenv` call above has already loaded server/.env, where MONGO_URI is the
-// real connection string - so the `||` never fired and this file connected to the
-// development database and dropped it in `before` and again in `after`. Local
-// development data was lost to that, with no dump.
-//
-// The rule now lives in one place, helpers/testDatabase.js, which refuses any
-// name that is not recognisably disposable and any host that is not loopback.
-// testDatabaseSafety.test.js fails if this suite stops using it, or if any suite
-// in this directory starts reading process.env.MONGO_URI.
-const TEST_DB_URI = disposableTestDatabaseUri('ricozcontract_editlock_test');
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 let server;
@@ -44,7 +29,7 @@ const utcDay = (daysFromToday) => new Date(Date.UTC(
 
 const signToken = (user) => jwt.sign(
   { id: user._id.toString(), tokenVersion: user.tokenVersion || 0 },
-  process.env.JWT_SECRET,
+  TEST_JWT_SECRET,
   { expiresIn: '7d' }
 );
 
@@ -79,12 +64,17 @@ const api = async (method, url, { body, token } = {}) => {
 };
 
 test.before(async () => {
-  await mongoose.connect(TEST_DB_URI, { autoIndex: false });
-  await mongoose.connection.dropDatabase();
-  await syncDocumentVersionIndex(mongoose.model('ContractDocument'), { maxTimeMS: 10000 });
-  // The amendment queue relies on a partial unique index; create it explicitly
-  // exactly as production would have to.
-  await ContractAmendment.syncIndexes();
+  await mongoose.connect(TEST_DB_URI, { autoIndex: false, serverSelectionTimeoutMS: 3000 });
+  // The amendment queue relies on this partial unique index. Create only this
+  // required index; syncIndexes could drop indexes and is deliberately unused.
+  await ContractAmendment.collection.createIndex(
+    { contract: 1 },
+    {
+      unique: true,
+      partialFilterExpression: { status: 'Pending' },
+      name: 'one_pending_amendment_per_contract'
+    }
+  );
   const app = express();
   app.use(express.json({ limit: '1mb' }));
   app.use('/api/contracts', contractRoutes);
@@ -111,7 +101,6 @@ test.beforeEach(async () => {
 test.after(async () => {
   if (server) await new Promise((resolve) => server.close(resolve));
   if (mongoose.connection.readyState) {
-    await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
   }
 });
@@ -180,12 +169,36 @@ test('every role can still edit a Draft contract', async () => {
 
   const res = await api('PUT', `/api/contracts/${contract._id}`, {
     token: signToken(employee),
-    body: { amount: 250, startDate: utcDay(0).toISOString(), endDate: utcDay(90).toISOString(), assignedUser: admin._id }
+    body: { amount: 250, startDate: utcDay(0).toISOString(), endDate: utcDay(90).toISOString() }
   });
   assert.equal(res.status, 200);
   const stored = await Contract.findById(contract._id);
   assert.equal(stored.amount, 250);
-  assert.equal(stored.assignedUser.toString(), admin._id.toString());
+  // The assignment was not asked to move, so it did not move.
+  assert.equal(stored.assignedUser.toString(), employee._id.toString());
+});
+
+test('a Draft contract stays editable, but only an administrator or a manager may move the assignee', async () => {
+  const admin = await createUser({ name: 'Admin4b', email: 'lock.admin4b@ricoz.test', role: 'Admin' });
+  const employee = await createUser({ name: 'Emp4b', email: 'lock.emp4b@ricoz.test' });
+  const contract = await makeContract({ createdBy: admin._id, assignedUser: employee._id, status: 'Draft' });
+
+  // The assignee decides who works the contract and who can open it, so moving
+  // it is a management act: an Employee may edit the contract it is assigned,
+  // but it may not hand the contract to somebody else.
+  const refused = await api('PUT', `/api/contracts/${contract._id}`, {
+    token: signToken(employee), body: { assignedUser: admin._id }
+  });
+  assert.equal(refused.status, 403);
+  assert.match(refused.data.message, /Only administrators and managers can change the contract assignee/);
+  const untouched = await Contract.findById(contract._id);
+  assert.equal(untouched.assignedUser.toString(), employee._id.toString(), 'the refused attempt changed nothing');
+
+  const allowed = await api('PUT', `/api/contracts/${contract._id}`, {
+    token: signToken(admin), body: { assignedUser: admin._id }
+  });
+  assert.equal(allowed.status, 200);
+  assert.equal((await Contract.findById(contract._id)).assignedUser.toString(), admin._id.toString());
 });
 
 test('a Rejected contract is editable again', async () => {
