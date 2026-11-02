@@ -3,11 +3,9 @@ const nodemailer = require('nodemailer');
 
 // Password-reset email delivery.
 //
-// Two transports are supported. Resend is an HTTPS API call, so it is not
-// affected by the platform host blocking or throttling outbound SMTP (the cause
-// of the "Connection timeout" reports), and it is therefore used whenever its
-// key is present. SMTP via Nodemailer is kept as an optional fallback and is
-// used on its own when no Resend key is configured.
+// ZeptoMail SMTP is preferred, followed by the Resend HTTPS API and generic
+// SMTP. Credentials come only from the environment, and all logged errors pass
+// through sanitizeForLog.
 //
 // Every credential comes from the environment and nothing sensitive is logged
 // here. sanitizeForLog is the only function allowed to build a log string: API
@@ -28,12 +26,15 @@ const ANGLE_ADDRESS_PATTERN = /<([^<>]+)>/;
 const isResendConfigured = () =>
   typeof process.env.RESEND_API_KEY === 'string' && Boolean(process.env.RESEND_API_KEY.trim());
 
+const isZeptoMailConfigured = () =>
+  typeof process.env.ZEPTOMAIL_SMTP_HOST === 'string'
+  && Boolean(process.env.ZEPTOMAIL_SMTP_HOST.trim());
+
 const isSmtpConfigured = () =>
   typeof process.env.SMTP_HOST === 'string' && Boolean(process.env.SMTP_HOST.trim());
 
-// The transport a single send will use first. Resend wins whenever its key is
-// set, because the HTTPS API path is the one that works on a restricted host.
 const getEmailProvider = () => {
+  if (isZeptoMailConfigured()) return 'zeptomail';
   if (isResendConfigured()) return 'resend';
   if (isSmtpConfigured()) return 'smtp';
   return null;
@@ -42,6 +43,7 @@ const getEmailProvider = () => {
 // The ordered transports a send will actually try, best first.
 const resolveProviderChain = () => {
   const chain = [];
+  if (isZeptoMailConfigured()) chain.push('zeptomail');
   if (isResendConfigured()) chain.push('resend');
   if (isSmtpConfigured()) chain.push('smtp');
   return chain;
@@ -78,7 +80,40 @@ const buildTransportOptions = () => ({
   socketTimeout: 20000
 });
 
+const resolveZeptoMailPort = () => {
+  const raw = String(process.env.ZEPTOMAIL_SMTP_PORT || '').trim();
+  if (!raw) return 587;
+  const port = Number(raw);
+  if (!Number.isInteger(port) || ![465, 587].includes(port)) return 587;
+  return port;
+};
+
+const buildZeptoMailTransportOptions = () => {
+  const port = resolveZeptoMailPort();
+  const user = process.env.ZEPTOMAIL_SMTP_USER;
+  const password = process.env.ZEPTOMAIL_SMTP_PASSWORD;
+  return {
+    host: process.env.ZEPTOMAIL_SMTP_HOST?.trim() || 'smtp.zeptomail.in',
+    port,
+    secure: port === 465,
+    ...(port === 587 ? { requireTLS: true } : {}),
+    auth: user && password ? { user, pass: password } : undefined,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000
+  };
+};
+
+const buildZeptoMailFrom = () => {
+  const address = String(process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
+  const name = String(process.env.ZEPTOMAIL_FROM_NAME || '').replace(/[\r\n]/g, ' ').trim();
+  if (!address || !name) return address;
+  const escapedName = name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `"${escapedName}" <${address}>`;
+};
+
 const getTransport = () => nodemailer.createTransport(buildTransportOptions());
+const getZeptoMailTransport = () => nodemailer.createTransport(buildZeptoMailTransportOptions());
 
 // Reports every configuration defect before a request is made, so a missing
 // variable is found on the platform dashboard rather than in a user complaint.
@@ -87,10 +122,35 @@ const validateEmailConfig = () => {
   const problems = [];
   const warnings = [];
   const chain = resolveProviderChain();
+  const zeptoMailIsPrimary = chain[0] === 'zeptomail';
   const smtpIsPrimary = chain[0] === 'smtp';
 
   if (!chain.length) {
-    problems.push('No email transport is configured. Set RESEND_API_KEY (preferred) or SMTP_HOST.');
+    problems.push(
+      'No email transport is configured. Set ZEPTOMAIL_SMTP_HOST, RESEND_API_KEY, or SMTP_HOST.'
+    );
+  }
+
+  if (isZeptoMailConfigured()) {
+    const rawPort = String(process.env.ZEPTOMAIL_SMTP_PORT || '').trim();
+    const port = Number(rawPort);
+    if (rawPort && (!Number.isInteger(port) || ![465, 587].includes(port))) {
+      const detail = `ZEPTOMAIL_SMTP_PORT="${rawPort}" must be 465 or 587; 587 is being used instead.`;
+      (zeptoMailIsPrimary ? problems : warnings).push(detail);
+    }
+
+    for (const key of ['ZEPTOMAIL_SMTP_USER', 'ZEPTOMAIL_SMTP_PASSWORD', 'ZEPTOMAIL_FROM_EMAIL']) {
+      if (!process.env[key] || !process.env[key].trim()) {
+        const detail = `${key} is required for ZeptoMail SMTP.`;
+        (zeptoMailIsPrimary ? problems : warnings).push(detail);
+      }
+    }
+
+    if (process.env.ZEPTOMAIL_FROM_EMAIL
+        && !EMAIL_ADDRESS_PATTERN.test(process.env.ZEPTOMAIL_FROM_EMAIL.trim())) {
+      const detail = 'ZEPTOMAIL_FROM_EMAIL is not a usable email address.';
+      (zeptoMailIsPrimary ? problems : warnings).push(detail);
+    }
   }
 
   if (isResendConfigured()) {
@@ -99,9 +159,11 @@ const validateEmailConfig = () => {
       warnings.push('RESEND_API_KEY does not look like a Resend API key (expected the re_ prefix).');
     }
     if (!process.env.EMAIL_FROM || !process.env.EMAIL_FROM.trim()) {
-      problems.push('EMAIL_FROM is required when RESEND_API_KEY is set: Resend only sends from a verified address.');
+      const detail = 'EMAIL_FROM is required when RESEND_API_KEY is set: Resend only sends from a verified address.';
+      (chain[0] === 'resend' ? problems : warnings).push(detail);
     } else if (!EMAIL_ADDRESS_PATTERN.test(extractAddress(process.env.EMAIL_FROM))) {
-      problems.push('EMAIL_FROM is not a usable email address.');
+      const detail = 'EMAIL_FROM is not a usable email address.';
+      (chain[0] === 'resend' ? problems : warnings).push(detail);
     }
   }
 
@@ -124,7 +186,7 @@ const validateEmailConfig = () => {
   }
 
   if (chain.length > 1) {
-    warnings.push('Resend and SMTP are both configured; SMTP stays as a fallback for a failed Resend send.');
+    warnings.push(`Multiple email transports are configured; fallback order is ${chain.join(' -> ')}.`);
   }
 
   return { provider: getEmailProvider(), transports: chain, valid: problems.length === 0, problems, warnings };
@@ -134,10 +196,21 @@ const validateEmailConfig = () => {
 
 // Values that must never appear in a log line, taken from the live environment
 // so a newly added secret is covered without editing this list.
-const configuredSecrets = () =>
-  [process.env.RESEND_API_KEY, process.env.SMTP_PASSWORD].filter(
+const configuredSecrets = () => {
+  const secrets = [
+    process.env.RESEND_API_KEY,
+    process.env.ZEPTOMAIL_SMTP_USER,
+    process.env.SMTP_USER,
+    process.env.SMTP_PASSWORD
+  ].filter(
     (value) => typeof value === 'string' && value.trim().length >= 6
   );
+  const zeptoMailPassword = process.env.ZEPTOMAIL_SMTP_PASSWORD;
+  if (typeof zeptoMailPassword === 'string' && zeptoMailPassword.length > 0) {
+    secrets.push(zeptoMailPassword);
+  }
+  return secrets;
+};
 
 // Reduces an arbitrary value to a single short line with every credential, reset
 // link, reset token and email address removed. This is the only sanctioned way
@@ -364,6 +437,29 @@ const sendViaResend = (message) =>
 
 // ------------------------------------------------------------------ smtp ---
 
+const sendViaZeptoMail = async (message) => {
+  if (!isZeptoMailConfigured()
+      || !process.env.ZEPTOMAIL_SMTP_USER
+      || !process.env.ZEPTOMAIL_SMTP_PASSWORD
+      || !process.env.ZEPTOMAIL_FROM_EMAIL) {
+    throw configError(
+      'ZEPTOMAIL_NOT_CONFIGURED',
+      'ZeptoMail SMTP configuration is incomplete',
+      'zeptomail'
+    );
+  }
+
+  const info = await getZeptoMailTransport().sendMail({
+    ...message,
+    from: buildZeptoMailFrom()
+  });
+  return {
+    provider: 'zeptomail',
+    messageId: (info && info.messageId) || null,
+    accepted: (info && info.accepted) || []
+  };
+};
+
 const sendViaSmtp = async (message) => {
   if (!isSmtpConfigured()) {
     throw configError('SMTP_NOT_CONFIGURED', 'SMTP is not configured (SMTP_HOST is missing)', 'smtp');
@@ -374,6 +470,13 @@ const sendViaSmtp = async (message) => {
     messageId: (info && info.messageId) || null,
     accepted: (info && info.accepted) || []
   };
+};
+
+const sendViaProvider = (provider, message) => {
+  if (provider === 'zeptomail') return sendViaZeptoMail(message);
+  if (provider === 'resend') return sendViaResend(message);
+  if (provider === 'smtp') return sendViaSmtp(message);
+  throw configError('EMAIL_PROVIDER_UNSUPPORTED', 'Unsupported email provider', provider);
 };
 
 // ------------------------------------------------------------------ send ---
@@ -387,7 +490,7 @@ const sendPasswordResetEmail = async (args) => {
   if (!chain.length) {
     // The legacy code is kept so existing log alerts keep matching.
     const error = new Error(
-      'No email transport is configured. Set RESEND_API_KEY (preferred) or SMTP_HOST for password reset email.'
+      'No email transport is configured. Set ZEPTOMAIL_SMTP_HOST, RESEND_API_KEY, or SMTP_HOST for password reset email.'
     );
     error.code = 'SMTP_NOT_CONFIGURED';
     error.provider = null;
@@ -399,7 +502,7 @@ const sendPasswordResetEmail = async (args) => {
 
   for (const provider of chain) {
     try {
-      return await (provider === 'resend' ? sendViaResend(message) : sendViaSmtp(message));
+      return await sendViaProvider(provider, message);
     } catch (error) {
       failures.push({ provider, error });
     }
@@ -451,15 +554,14 @@ const buildOtpMessage = ({ to, otp, expiresInMinutes }) => {
   };
 };
 
-// Tries each configured transport in order (Resend first, SMTP as the fallback)
-// exactly like sendPasswordResetEmail. The caller's code is not touched by this
+// Tries each configured transport in order. The caller's code is not touched by this
 // function: when every transport fails the stored OTP hash stays exactly as
 // valid as it was, so a resend or a retry can still use it.
 const sendOtpEmail = async (args) => {
   const chain = resolveProviderChain();
   if (!chain.length) {
     const error = new Error(
-      'No email transport is configured. Set RESEND_API_KEY (preferred) or SMTP_HOST for verification code email.'
+      'No email transport is configured. Set ZEPTOMAIL_SMTP_HOST, RESEND_API_KEY, or SMTP_HOST for verification code email.'
     );
     error.code = 'SMTP_NOT_CONFIGURED';
     error.provider = null;
@@ -471,7 +573,7 @@ const sendOtpEmail = async (args) => {
 
   for (const provider of chain) {
     try {
-      return await (provider === 'resend' ? sendViaResend(message) : sendViaSmtp(message));
+      return await sendViaProvider(provider, message);
     } catch (error) {
       failures.push({ provider, error });
     }
@@ -491,6 +593,7 @@ const sendOtpEmail = async (args) => {
 };
 
 module.exports = {
+  isZeptoMailConfigured,
   isSmtpConfigured,
   isResendConfigured,
   getEmailProvider,
@@ -498,6 +601,8 @@ module.exports = {
   validateEmailConfig,
   extractAddress,
   buildTransportOptions,
+  buildZeptoMailTransportOptions,
+  buildZeptoMailFrom,
   buildPasswordResetMessage,
   buildOtpMessage,
   buildResendPayload,

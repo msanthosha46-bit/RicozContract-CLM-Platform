@@ -20,7 +20,9 @@ const app = require(path.join(__dirname, '..', 'app'));
 const { buildResetLink } = require(path.join(__dirname, '..', 'utils', 'passwordReset'));
 const {
   buildTransportOptions,
+  buildZeptoMailTransportOptions,
   extractAddress,
+  isZeptoMailConfigured,
   isResendConfigured,
   isSmtpConfigured,
   sanitizeForLog,
@@ -32,8 +34,13 @@ const LIVE_SMTP = process.argv.includes('--smtp');
 // a cross-origin preflight to the API it is because the frontend has
 // REACT_APP_API_URL set, so CLIENT_URL has to contain this exact value. Pass a
 // different origin as the first argument to check a staging deployment.
-const EXPECTED_WEB_ORIGIN = process.argv[2] || 'https://ricoz-contract-clm-platform.vercel.app';
-const ENFORCE_EXPECTED_ORIGIN = Boolean(process.argv[2]) || require(path.join(__dirname, '..', 'app')).isProduction();
+const positionalArgs = process.argv.slice(2).filter((arg) => !arg.startsWith('--'));
+
+const EXPECTED_WEB_ORIGIN =
+  positionalArgs[0] || 'https://ricoz-contract-clm-platform.vercel.app';
+
+const ENFORCE_EXPECTED_ORIGIN =
+  Boolean(positionalArgs[0]) || app.isProduction();
 const findings = [];
 const record = (level, message) => findings.push({ level, message });
 
@@ -206,7 +213,9 @@ section('Email (password reset)');
 // service can never disagree.
 const emailConfig = validateEmailConfig();
 const resendConfigured = isResendConfigured();
+const zeptoMailConfigured = isZeptoMailConfigured();
 const smtpConfigured = isSmtpConfigured();
+const smtpVerifications = [];
 
 line(
   emailConfig.transports.length ? PASS : BLOCK,
@@ -214,48 +223,62 @@ line(
 );
 line(
   resendConfigured ? PASS : WARN,
-  `RESEND_API_KEY ${mask(process.env.RESEND_API_KEY)} - primary transport, no outbound SMTP needed`
+  `RESEND_API_KEY ${mask(process.env.RESEND_API_KEY)} - HTTPS provider; verification makes no API call`
 );
 
-const fromAddress = extractAddress(process.env.EMAIL_FROM);
-const fromDomain = (fromAddress || '').split('@')[1] || null;
-if (fromAddress) {
+if (process.env.EMAIL_FROM && process.env.EMAIL_FROM.trim()) {
+  const fromAddress = extractAddress(process.env.EMAIL_FROM);
+  const fromDomain = (fromAddress || '').split('@')[1] || null;
   line(PASS, `EMAIL_FROM ${mask(process.env.EMAIL_FROM)} - verified sender required by Resend`);
-  line(PASS, `EMAIL_FROM domain: ${fromDomain}`);
+  if (fromDomain) line(PASS, `EMAIL_FROM domain: ${fromDomain}`);
 } else {
+  const resendIsPrimary = emailConfig.provider === 'resend';
   line(
-    resendConfigured ? BLOCK : WARN,
-    'EMAIL_FROM is EMPTY - Resend only sends from a verified address, SMTP falls back to SMTP_USER'
+    resendConfigured && resendIsPrimary ? BLOCK : WARN,
+    'EMAIL_FROM is EMPTY - Resend requires a verified sender address'
   );
-  if (resendConfigured) record('BLOCK', 'EMAIL_FROM is not set, so the Resend transport cannot send');
+  if (resendConfigured) {
+    record(
+      resendIsPrimary ? 'BLOCK' : 'WARN',
+      'EMAIL_FROM is not set, so the Resend transport cannot send'
+    );
+  }
 }
 
-// Every SMTP problem is only a blocker while SMTP is the transport that has to
-// carry the delivery; otherwise it is a warning about an unused fallback.
+if (zeptoMailConfigured) {
+  const options = buildZeptoMailTransportOptions();
+  const senderDomain = (process.env.ZEPTOMAIL_FROM_EMAIL || '').split('@')[1] || null;
+  line(
+    PASS,
+    `ZeptoMail SMTP host=${options.host} port=${options.port} secure=${options.secure} auth=${mask(options.auth && options.auth.user)}`
+  );
+  line(
+    process.env.ZEPTOMAIL_FROM_EMAIL
+      ? PASS
+      : (emailConfig.provider === 'zeptomail' ? BLOCK : WARN),
+    `ZEPTOMAIL_FROM_EMAIL ${mask(process.env.ZEPTOMAIL_FROM_EMAIL)}`
+  );
+  if (senderDomain) line(PASS, `ZeptoMail sender domain: ${senderDomain}`);
+  if (options.auth && process.env.ZEPTOMAIL_FROM_EMAIL) {
+    smtpVerifications.push({ name: 'ZeptoMail SMTP', options });
+  }
+}
+
 const smtpEnv = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD'];
 const missingSmtp = smtpEnv.filter((key) => !process.env[key]);
 if (!smtpConfigured) {
   line(
-    resendConfigured ? WARN : BLOCK,
+    emailConfig.transports.length ? WARN : BLOCK,
     `SMTP is not configured${missingSmtp.length ? ` (missing: ${missingSmtp.join(', ')})` : ''}`
   );
-  if (!resendConfigured) {
+  if (!emailConfig.transports.length) {
     record('BLOCK', 'SMTP is incomplete (SMTP_HOST is empty) and RESEND_API_KEY is not set, so password reset emails cannot be sent');
   } else {
-    record('WARN', 'SMTP is not configured, so there is no fallback if a Resend send fails');
+    record('WARN', 'Generic SMTP is not configured');
   }
 } else {
   const options = buildTransportOptions();
   line(PASS, `SMTP_HOST ${mask(process.env.SMTP_HOST)} host=${options.host} port=${options.port} secure=${options.secure} auth=${mask(options.auth && options.auth.user)}`);
-  const userDomain = (process.env.SMTP_USER || '').split('@')[1] || null;
-  if (userDomain && fromDomain) {
-    if (userDomain === fromDomain) {
-      line(PASS, `SMTP_USER and EMAIL_FROM share the same domain (${fromDomain}), so SPF/DKIM can align`);
-    } else {
-      line(WARN, `SMTP_USER and EMAIL_FROM use different domains, so SPF/DKIM may not align`);
-      record('WARN', 'SMTP_USER domain and EMAIL_FROM domain differ');
-    }
-  }
   if (String(options.port) === '465' && options.secure !== true) {
     line(BLOCK, 'port 465 requires SMTP_SECURE=true for implicit TLS');
     record('BLOCK', 'SMTP_SECURE must be true when SMTP_PORT is 465');
@@ -267,6 +290,7 @@ if (!smtpConfigured) {
   if (missingSmtp.length) {
     line(WARN, `optional SMTP variables are empty: ${missingSmtp.join(', ')}`);
   }
+  smtpVerifications.push({ name: 'Generic SMTP', options });
 }
 
 for (const problem of emailConfig.problems) {
@@ -278,28 +302,27 @@ for (const warning of emailConfig.warnings) {
   record('WARN', warning);
 }
 
-if (LIVE_SMTP && smtpConfigured) {
+if (LIVE_SMTP && smtpVerifications.length) {
   const nodemailer = require(path.join(__dirname, '..', 'node_modules', 'nodemailer'));
-  nodemailer
-    .createTransport(buildTransportOptions())
-    .verify()
-    .then((ok) => {
-      line(ok ? PASS : BLOCK, `live handshake and authentication succeeded: ${ok}`);
-      if (!ok) record('BLOCK', 'SMTP verify() returned false');
-      finish();
-    })
-    .catch((error) => {
-      // The code is printed because a mail server's reply is the whole point of
-      // the check; the message is sanitised and the password is never echoed.
-      line(BLOCK, `live handshake failed: ${error.code || sanitizeForLog(error.message)}`);
-      record('BLOCK', `SMTP verify() failed (${error.code || 'unknown'})`);
-      finish();
-    });
+  (async () => {
+    for (const { name, options } of smtpVerifications) {
+      try {
+        const ok = await nodemailer.createTransport(options).verify();
+        line(ok ? PASS : BLOCK, `${name} live handshake and authentication succeeded: ${ok}`);
+        if (!ok) record('BLOCK', `${name} verify() returned false`);
+      } catch (error) {
+        const code = sanitizeForLog(error && error.code) || 'unknown';
+        line(BLOCK, `${name} live handshake failed: ${code}`);
+        record('BLOCK', `${name} verify() failed (${code})`);
+      }
+    }
+    finish();
+  })();
 } else {
-  if (!smtpConfigured) {
-    console.log('      SMTP is not configured, so there is no live handshake to run');
-  } else {
-    console.log('      run with --smtp to attempt a real connection and authentication');
+  if (!LIVE_SMTP) {
+    console.log('      configuration-only check; no network connections were made');
+  } else if (!smtpVerifications.length) {
+    console.log('      no SMTP providers are configured, so there is no live handshake to run');
   }
   finish();
 }

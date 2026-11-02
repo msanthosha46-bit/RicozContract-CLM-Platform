@@ -16,9 +16,14 @@ const EMAIL_VARS = [
   'SMTP_SECURE',
   'SMTP_USER',
   'SMTP_PASSWORD',
+  'ZEPTOMAIL_SMTP_HOST',
+  'ZEPTOMAIL_SMTP_PORT',
+  'ZEPTOMAIL_SMTP_USER',
+  'ZEPTOMAIL_SMTP_PASSWORD',
+  'ZEPTOMAIL_FROM_EMAIL',
+  'ZEPTOMAIL_FROM_NAME',
   'CLIENT_URL'
 ];
-
 // Runs fn with the given email environment, restoring the previous values after.
 // A key that is absent from `env` is deleted, so every unspecified variable is
 // guaranteed to be unset while fn runs.
