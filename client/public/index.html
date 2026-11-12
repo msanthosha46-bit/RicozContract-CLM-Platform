@@ -1,41 +1,83 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="theme-color" content="#0f172a" />
-		<meta name="description" content="RicozContract contract lifecycle management" />
-		<title>RicozContract</title>
-		<link rel="preconnect" href="https://fonts.googleapis.com" />
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-		<link
-			rel="stylesheet"
-			href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap"
-			media="print"
-			onload="this.media='all'"
-		/>
-		<noscript>
-			<link
-				rel="stylesheet"
-				href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap"
-			/>
-		</noscript>
-		<script>
-			(function () {
-				// Paint the stored or system theme before first render, so the
-				// dark-mode surfaces are there from the first frame instead of
-				// flashing light. Mirrors applyTheme() in ThemeContext.js.
-				try {
-					var stored = localStorage.getItem('ricoz_theme');
-					var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-					if (dark) {
-						document.documentElement.classList.add('dark');
-						document.documentElement.style.colorScheme = 'dark';
-					}
-				} catch (err) {}
-			})();
-		</script>
-	</head>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <!-- Primary SEO -->
+    <title>RicozContract | Contract Lifecycle Management Software</title>
+    <meta
+        name="description"
+        content="Manage contracts, approvals, obligations, documents and renewals in one secure contract lifecycle management workspace."
+    />
+    <meta name="robots" content="index, follow" />
+    <link
+        rel="canonical"
+        href="https://ricoz-contract-clm-platform.vercel.app/"
+    />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="RicozContract" />
+    <meta
+        property="og:title"
+        content="RicozContract | Contract Lifecycle Management Software"
+    />
+    <meta
+        property="og:description"
+        content="Manage contracts, approvals, obligations, documents and renewals in one secure contract lifecycle management workspace."
+    />
+    <meta
+        property="og:url"
+        content="https://ricoz-contract-clm-platform.vercel.app/"
+    />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta
+        name="twitter:title"
+        content="RicozContract | Contract Lifecycle Management Software"
+    />
+    <meta
+        name="twitter:description"
+        content="Manage contracts, approvals, obligations, documents and renewals in one secure contract lifecycle management workspace."
+    />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap"
+        media="print"
+        onload="this.media='all'"
+    />
+    <noscript>
+        <link
+            rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap"
+        />
+    </noscript>
+
+    <script>
+        (function () {
+            try {
+                var stored = localStorage.getItem('ricoz_theme');
+                var dark = stored
+                    ? stored === 'dark'
+                    : window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (dark) {
+                    document.documentElement.classList.add('dark');
+                    document.documentElement.style.colorScheme = 'dark';
+                }
+            } catch (err) {}
+        })();
+    </script>
+</head>
+
+
 	<body>
 		<noscript>You need to enable JavaScript to run this app.</noscript>
 		<div id="root"></div>

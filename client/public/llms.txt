@@ -1,9 +1,7 @@
 # RicozContract
 
-## Public pages
+## About
+RicozContract is a Contract Lifecycle Management (CLM) platform for managing contracts, approvals, obligations, documents, milestones, renewals and reports.
 
-- [Home](/)
-- [Login](/login)
-- [Register](/register)
-- [Forgot password](/forgot-password)
-- [Reset password](/reset-password)
+## Public pages
+- [Home](https://ricoz-contract-clm-platform.vercel.app/)

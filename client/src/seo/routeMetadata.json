@@ -1,0 +1,97 @@
+{
+  "/": {
+    "title": "RicozContract | Contract Lifecycle Management Software",
+    "description": "Manage contracts, approvals, obligations, documents and renewals in one secure contract lifecycle management workspace.",
+    "robots": "index, follow",
+    "canonical": "https://ricoz-contract-clm-platform.vercel.app/",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "RicozContract",
+      "og:title": "RicozContract | Contract Lifecycle Management Software",
+      "og:description": "Manage contracts, approvals, obligations, documents and renewals in one secure contract lifecycle management workspace.",
+      "og:url": "https://ricoz-contract-clm-platform.vercel.app/"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "RicozContract | Contract Lifecycle Management Software",
+      "twitter:description": "Manage contracts, approvals, obligations, documents and renewals in one secure contract lifecycle management workspace."
+    },
+    "structuredData": {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "RicozContract",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web browser",
+      "url": "https://ricoz-contract-clm-platform.vercel.app/",
+      "description": "Manage contracts, approvals, obligations, documents and renewals in one secure contract lifecycle management workspace."
+    }
+  },
+  "/login": {
+    "title": "Login – RicozContract",
+    "description": "Sign in to your RicozContract workspace to manage contracts, approvals, obligations, and renewals.",
+    "robots": "noindex, nofollow",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "RicozContract",
+      "og:title": "Login – RicozContract",
+      "og:description": "Sign in to your RicozContract workspace to manage contracts, approvals, obligations, and renewals.",
+      "og:url": "https://ricoz-contract-clm-platform.vercel.app/login"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "Login – RicozContract",
+      "twitter:description": "Sign in to your RicozContract workspace to manage contracts, approvals, obligations, and renewals."
+    }
+  },
+  "/register": {
+    "title": "Register – RicozContract",
+    "description": "Create a RicozContract workspace to organize contracts, approvals, documents, obligations, and renewals.",
+    "robots": "noindex, nofollow",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "RicozContract",
+      "og:title": "Register – RicozContract",
+      "og:description": "Create a RicozContract workspace to organize contracts, approvals, documents, obligations, and renewals.",
+      "og:url": "https://ricoz-contract-clm-platform.vercel.app/register"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "Register – RicozContract",
+      "twitter:description": "Create a RicozContract workspace to organize contracts, approvals, documents, obligations, and renewals."
+    }
+  },
+  "/forgot-password": {
+    "title": "Forgot Password – RicozContract",
+    "description": "Request a secure password reset link for your RicozContract account.",
+    "robots": "noindex, nofollow",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "RicozContract",
+      "og:title": "Forgot Password – RicozContract",
+      "og:description": "Request a secure password reset link for your RicozContract account.",
+      "og:url": "https://ricoz-contract-clm-platform.vercel.app/forgot-password"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "Forgot Password – RicozContract",
+      "twitter:description": "Request a secure password reset link for your RicozContract account."
+    }
+  },
+  "/reset-password": {
+    "title": "Reset Password – RicozContract",
+    "description": "Set a new password for your RicozContract account using your secure reset link.",
+    "robots": "noindex, nofollow",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "RicozContract",
+      "og:title": "Reset Password – RicozContract",
+      "og:description": "Set a new password for your RicozContract account using your secure reset link.",
+      "og:url": "https://ricoz-contract-clm-platform.vercel.app/reset-password"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "Reset Password – RicozContract",
+      "twitter:description": "Set a new password for your RicozContract account using your secure reset link."
+    }
+  }
+}

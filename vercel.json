@@ -8,7 +8,79 @@
       "destination": "https://ricozcontract-clm-platform-2.onrender.com/api/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/login",
+      "destination": "/login/index.html"
+    },
+    {
+      "source": "/register",
+      "destination": "/register/index.html"
+    },
+    {
+      "source": "/forgot-password",
+      "destination": "/forgot-password/index.html"
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/reset-password/index.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/contracts",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/contracts/create",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/contracts/:id",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/contracts/:id/edit",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/approvals",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/amendments",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/obligations",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/milestones",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/renewals",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reports",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/activity",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/users",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/settings",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/profile",
       "destination": "/index.html"
     }
   ]

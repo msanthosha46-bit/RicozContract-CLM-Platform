@@ -6,6 +6,8 @@ import OtpVerification from '../components/OtpVerification';
 import PasswordInput from '../components/PasswordInput';
 import SubmitButton from '../components/Layout/Common/SubmitButton';
 import AuthLayout, { AuthAside, inputClass, labelClass } from '../components/Layout/AuthLayout';
+import PageSEO from '../components/PageSEO';
+import routeMetadata from '../seo/routeMetadata.json';
 
 const Login = () => {
 	const { login, beginGoogleOtp, verifyGoogleOtp, resendGoogleOtp } = useContext(AuthContext);
@@ -93,6 +95,7 @@ const Login = () => {
 				</>
 			}
 		>
+			<PageSEO {...routeMetadata['/login']} />
 			{googleStep ? (
 				<OtpVerification
 					challengeId={googleStep.challengeId}

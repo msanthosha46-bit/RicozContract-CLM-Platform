@@ -19,6 +19,8 @@ import {
   X
 } from 'lucide-react';
 import ThemeToggle from '../components/Layout/ThemeToggle';
+import PageSEO from '../components/PageSEO';
+import routeMetadata from '../seo/routeMetadata.json';
 
 const NAV_LINKS = [
   { href: '#features', label: 'Features' },
@@ -149,6 +151,7 @@ const LandingPage = () => {
 
   return (
     <div className="min-h-screen bg-[#f4f6f9] text-[#111827] dark:bg-[#0b1220] dark:text-slate-200">
+      <PageSEO {...routeMetadata['/']} />
       <a href="#main" className="ricoz-skip-link">Skip to content</a>
 
       <header className="sticky top-0 z-50 border-b border-[#e7ebf0] bg-white/90 backdrop-blur-xl dark:border-slate-700 dark:bg-[#101827]/90">
