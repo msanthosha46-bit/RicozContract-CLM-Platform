@@ -5,6 +5,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ADMIN_ROLES, MANAGER_ROLES } from './utils/roles';
 import Sidebar from './components/Layout/Sidebar';
 import Topbar from './components/Layout/Topbar';
+import PageSEO from './components/PageSEO';
 
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
@@ -26,6 +27,7 @@ const ActivityLog = lazy(() => import('./pages/ActivityLog'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Profile = lazy(() => import('./pages/Profile'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 const PageLoadingFallback = () => (
   <main className="flex min-h-screen items-center justify-center bg-[#f3f5f8] p-6 text-slate-700 dark:bg-[#0b1220] dark:text-slate-200">
@@ -76,6 +78,11 @@ const ProtectedLayout = ({ children }) => {
 
   return (
     <div className="ricoz-shell flex min-h-screen bg-[#f3f5f8] font-sans text-slate-900">
+      <PageSEO
+        title="RicozContract – Private Workspace"
+        description="Private RicozContract application workspace."
+        robots="noindex, nofollow"
+      />
       <a href="#ricoz-main" className="ricoz-skip-link">Skip to main content</a>
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex min-w-0 flex-1 flex-col">
@@ -188,7 +195,7 @@ function App() {
             }
           />
           <Route path="/profile" element={<ProtectedLayout><Profile /></ProtectedLayout>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>
         </RouteErrorBoundary>

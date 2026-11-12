@@ -4,6 +4,8 @@ import API from '../services/api';
 import PasswordInput from '../components/PasswordInput';
 import SubmitButton from '../components/Layout/Common/SubmitButton';
 import AuthLayout, { AuthAside, inputClass, labelClass } from '../components/Layout/AuthLayout';
+import PageSEO from '../components/PageSEO';
+import routeMetadata from '../seo/routeMetadata.json';
 
 const ResetPassword = () => {
 	const [searchParams] = useSearchParams();
@@ -70,6 +72,7 @@ const ResetPassword = () => {
 				</Link>
 			}
 		>
+			<PageSEO {...routeMetadata['/reset-password']} />
 			{error && (
 				<div
 					role="alert"

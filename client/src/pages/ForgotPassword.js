@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import API from '../services/api';
 import SubmitButton from '../components/Layout/Common/SubmitButton';
 import AuthLayout, { AuthAside, inputClass, labelClass } from '../components/Layout/AuthLayout';
+import PageSEO from '../components/PageSEO';
+import routeMetadata from '../seo/routeMetadata.json';
 
 const ForgotPassword = () => {
 	const [email, setEmail] = useState('');
@@ -56,6 +58,7 @@ const ForgotPassword = () => {
 				</>
 			}
 		>
+			<PageSEO {...routeMetadata['/forgot-password']} />
 			{error && (
 				<div
 					role="alert"
