@@ -1,3 +1,4 @@
+
 name: CI
 
 on:
@@ -13,13 +14,14 @@ jobs:
     services:
       mongo:
         image: mongo:7
+        command: --replSet ricozTestRS --bind_ip_all --port 27018
         ports:
-          - 27017:27017
+          - 27018:27018
         options: >-
-          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-cmd "mongosh --quiet --port 27018 --eval 'try { rs.status() } catch (e) { rs.initiate({_id: \"ricozTestRS\", members: [{_id: 0, host: \"127.0.0.1:27018\"}]}) }; if (!db.hello().isWritablePrimary) quit(1)'"
           --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-timeout 10s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -41,12 +43,9 @@ jobs:
       - name: Test server
         working-directory: server
         env:
-          # A fixed, test-only JWT secret. A clean checkout has no server/.env
-          # (it is gitignored), and several server suites sign JWTs with
-          # process.env.JWT_SECRET without an inline fallback, so without this
-          # they fail with 'secretOrPrivateKey must have a value'. It is scoped
-          # to this step only and is never a production value.
           JWT_SECRET: test-only-jwt-secret-not-for-production
+          TEST_MONGO_URI: mongodb://127.0.0.1:27018/ricozcontract_ci_test?replicaSet=ricozTestRS
+          TEST_JWT_SECRET: ricoz-ci-only-test-secret-not-for-production-2026
         run: npm test
 
       - name: Check server syntax
@@ -60,11 +59,6 @@ jobs:
         working-directory: client
         run: npm ci
 
-      # The client suite was previously never executed by CI: the build step
-      # compiles the bundle but never runs the tests, so a regression in the
-      # notification, theme, renewal or responsive-overflow suites could reach
-      # main unnoticed. These are plain node:test files, not CRA/Jest, so they
-      # run with the Node test runner directly.
       - name: Test client
         working-directory: client
         run: npm test
